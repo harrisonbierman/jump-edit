@@ -15,9 +15,8 @@ int main(int argsc, char **argsv) {
 	for(int i = 0; i < argsc; i++) {
 		char buf[1024] = {0};
 		size_t arg_len = strnlen(argsv[i], sizeof(buf) - 1);
-		for (size_t j = 0; j < arg_len; j++) {
-			buf[j] = argsv[i][j]; 	
-		}
+		memcpy(buf, argsv[i], arg_len); 
+		printf("buf: %s\n", buf);
 
 	}
 
