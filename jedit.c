@@ -9,15 +9,35 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <gdbm.h>
 
 #define BUF_SIZE 1024
 
-int main(int argsc, char **argsv) {
+typedef enum { 
+	CMD_UNKNOWN,
+	CMD_ADD, 
+	CMD_REMOVE, 
+	CMD_HELP,
+}Cmd;
+
+Cmd parse_cmd(const char *buf) {
+	// strcmp returns 0 if strings are equal
+	// returns int of the difference between the first 
+	// non-same char. Good for lexicographically sorting
+	if(!strcmp(buf, "add")) return CMD_ADD;
+	if(!strcmp(buf, "rm"))  return CMD_REMOVE; 
+	if(!strcmp(buf, "--help")) return CMD_HELP;
+	if(!strcmp(buf, "-h")) return CMD_HELP;
+	return CMD_UNKNOWN;
+}
+
+int main(int argc, char **argv) {
 
 	// Extract Argument
-	for(int i = 0; i < argsc; i++) {
+	// i is 1 b/c first arg is 'jedit'
+	for(int i = 1; i < argc; i++) {
 
-		if (strnlen(argsv[i], BUF_SIZE) >= BUF_SIZE) {
+		if (strnlen(argv[i], BUF_SIZE) >= BUF_SIZE) {
 			fprintf(stderr, "argument too long, truncated\n");
 			exit(EXIT_FAILURE);
 		}
@@ -28,14 +48,29 @@ int main(int argsc, char **argsv) {
 		char buf[BUF_SIZE];
 
 		// BUF_SIZE - 1 leaves room for null terminator
-		size_t arg_len = strnlen(argsv[i], BUF_SIZE - 1);
+		size_t arg_len = strnlen(argv[i], BUF_SIZE - 1);
 
 		// always null terminate after memory copy
-		memcpy(buf, argsv[i], arg_len); 
+		memcpy(buf, argv[i], arg_len); 
 		buf[arg_len] = '\0';
 
 		printf("buf: %s\n", buf);
+		
+		// only if first argument
+		if (i == 1) {
+			Cmd cmd = parse_cmd(buf);
 
+			switch(cmd) {
+				case CMD_UNKNOWN:
+					break;
+				case CMD_ADD: 
+					break;
+				case CMD_HELP:
+					break;
+				case CMD_REMOVE:
+					break;
+			}
+		}
 	}
 
 

@@ -1,3 +1,3 @@
 default:
-	gcc -o jedit jedit.c
+	gcc -o jedit jedit.c -lgdbm
 
