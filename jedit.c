@@ -5,6 +5,7 @@
  * of your choice
  *
 */
+#include <assert.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <stdio.h>
@@ -42,11 +43,13 @@ Cmd parse_cmd(const char *buf) {
 
 int main(int argc, char **argv) {
 
-	// components of CLI tool
 	Cmd cmd;
-	char dir[BUF_SIZE] = {0};
-	char add_desc[BUF_SIZE] = {0};
-	char jump_desc[BUF_SIZE] = {0};
+
+	// instead of initializing whole array to 0
+	// just set first char to null terminator saves CPU time 
+	char jump_path[BUF_SIZE];		jump_path[0] = '\0';
+	char jump_desc[BUF_SIZE];		jump_desc[0] = '\0';
+	char edit_jump_desc[BUF_SIZE];	edit_jump_desc[0] = '\0';
 
 	// Extract argument
 	// i is 1 b/c first arg is 'jedit'
@@ -75,14 +78,14 @@ int main(int argc, char **argv) {
 		if (i == 1) {
 			cmd = parse_cmd(buf);
 			// need jump_desc for CMD_OTHER case
-			memcpy(jump_desc, buf, sizeof(buf));
+			memcpy(jump_desc, buf, BUF_SIZE);
 		}
 
-		// don't need to null terminate again b/c buf is safe
-		if (i == 2) memcpy(dir, buf, sizeof(buf));
-
 		// stores user command as 
-		if (i == 3) memcpy(add_desc, buf, sizeof(buf));
+		if (i == 2) memcpy(edit_jump_desc, buf, BUF_SIZE);
+
+		// don't need to null terminate again b/c buf is safe
+		if (i == 3) memcpy(jump_path, buf, BUF_SIZE);
 
 	}
 
@@ -97,33 +100,33 @@ int main(int argc, char **argv) {
 	}
 
 
-	// concat directory path
+	// concat home to jedit directory	
+	// snprintf returns # if chars it attempted to write
 	char jedit_dir[BUF_SIZE];
-	snprintf(jedit_dir, sizeof(jedit_dir), "%s/.local/share/jedit", xdg_data_home);
+	int char_written= snprintf(jedit_dir, BUF_SIZE, "%s/.local/share/jedit", xdg_data_home);
+	assert(char_written < BUF_SIZE); // if attempted chars does not fit into buffer
+
+	// concat jedit directory to jedit database file
+	char jedit_gdbm_dir[BUF_SIZE];
+	char_written = snprintf(jedit_gdbm_dir, BUF_SIZE, "%s/jedit.gdbm", jedit_dir);
+	assert(char_written < BUF_SIZE);
 
 
+	// create database directory
 	int status = mkdir(jedit_dir, 0777);
 	if (status == 0) {
 		printf("Directory created: %s\n", jedit_dir);
 	} else if(status == -1) {
 		printf("Directory '%s' already exists\n", jedit_dir);
 	} else {
-		perror("Error creating direcory\n");
+		fprintf(stderr, "Error: File %s:%d could not make database directory\n", __FILE__, __LINE__);
 		return 1;
 	}
 	
-
-	// concat jedit.gdbm to jedit directory
-	char jedit_gdbm_dir[BUF_SIZE];
-	snprintf(jedit_gdbm_dir, sizeof(jedit_gdbm_dir), "%s/.local/share/jedit/jedit.gdbm", xdg_data_home);
-
 	
 	// Set up database
 	GDBM_FILE db = gdbm_open(jedit_gdbm_dir, 0, GDBM_WRCREAT, 0600, NULL);
-	if (!db) {
-		fprintf(stderr, "failed to open database\n");
-		return 1;
-	}
+	assert(db && "Failed to open database");
 
 
 	// handle commands
@@ -152,18 +155,22 @@ int main(int argc, char **argv) {
 		case CMD_ADD:    // adds user command
 
 			// if something was not written into it
-			if (*dir == '\0' ) {
-				fprintf(stderr, "could not add jedit command, no directory provided\n");
-				return 1;
-			}
-			if (*add_desc == '\0' ) {
+			printf("descriptor: %s\n", edit_jump_desc);
+			printf("directory: %s\n", jump_path);
+
+			if (*edit_jump_desc == '\0' ) {
 				fprintf(stderr, "could not add jedit command, no descriptor provided\n");
 				return 1;
 			}
 
+			if (*jump_path == '\0' ) {
+				fprintf(stderr, "could not add jedit command, no directory provided\n");
+				return 1;
+			}
 
-			datum add_desc_key = { (void*)add_desc, strlen(add_desc) };
-			datum add_desc_val = { (void*)dir, strlen(dir) };
+
+			datum add_desc_key = { (void*)edit_jump_desc, strlen(edit_jump_desc) };
+			datum add_desc_val = { (void*)jump_path, strlen(jump_path) };
 
 			if (gdbm_store(db, add_desc_key, add_desc_val, GDBM_REPLACE) != 0) {
 				fprintf(stderr, "Store error\n");
