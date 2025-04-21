@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <gdbm.h>
+#include <unistd.h> // chdir()
 
 #define BUF_SIZE 1024
 
@@ -68,8 +69,6 @@ int main(int argc, char **argv) {
 		memcpy(buf, argv[i], arg_len); 
 		buf[arg_len] = '\0';
 
-		printf("buf: %s\n", buf);
-
 		// directory is used when adding a new user je jump
 		if (i == 1) {
 			// arg1 is either a command or a jump descriptor
@@ -118,7 +117,7 @@ int main(int argc, char **argv) {
 	if (status == 0) {
 		printf("Directory created: %s\n", je_dir);
 	} else if (status == -1) {
-		printf("Directory '%s' already exists\n", je_dir);
+		// printf("Directory '%s' already exists\n", je_dir);
 	} else {
 		fprintf(stderr, "Error: File %s:%d could not make database directory\n",
 				__FILE__, __LINE__);
@@ -146,8 +145,16 @@ int main(int argc, char **argv) {
 					fprintf(stderr, "Error: %s\n", gdbm_db_strerror(db));
 				}
 			} else {
+
+				char *dir = malloc(fetched.dsize + 1);
+				memcpy(dir, fetched.dptr, fetched.dsize);
+				dir[fetched.dsize] = '\0';
+
 				printf("jump command found: %s\n", jump_desc);
 				printf("directory: %.*s\n", (int)fetched.dsize, fetched.dptr);
+
+
+				int result = chdir(dir);
 			}
 
 			// I hate C
@@ -171,7 +178,12 @@ int main(int argc, char **argv) {
 			}
 
 
-			// extra room for null terminator
+
+			/*
+			 * because the datum's pointer holds the raw
+			 * data without a null terminator, wee need to
+			 * malloc room at the end for '\0' when storing
+			*/
 			char *keystr = malloc(firstkey.dsize + 1);
 			memcpy(keystr, firstkey.dptr, firstkey.dsize);
 			keystr[firstkey.dsize] = '\0'; // b/c it's index
@@ -182,18 +194,19 @@ int main(int argc, char **argv) {
 			memcpy(dirstr, fetched.dptr, fetched.dsize);
 			dirstr[fetched.dsize] = '\0';
 
+
 			printf("List of jump descriptors and paths\n");
 			printf("Desc: %s :: Path: %s\n", keystr, dirstr);
 
-			free(keystr);
-			free(dirstr);
-
 			datum nextkey = gdbm_nextkey(db, firstkey);
 
+			free(keystr);
+			free(dirstr);
 			free(firstkey.dptr);
+			free(fetched.dptr);
 
-			int count = 0;
 
+			// make this sort alphabetically later
 			while (nextkey.dptr != NULL) {
 
 				char *keystr = malloc(nextkey.dsize + 1);
@@ -217,11 +230,9 @@ int main(int argc, char **argv) {
 
 				free(oldkey.dptr);
 
-				count++;
 			}
 
 			free(nextkey.dptr);
-
 
 			break;
 
