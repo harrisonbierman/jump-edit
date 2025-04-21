@@ -153,8 +153,16 @@ int main(int argc, char **argv) {
 				printf("jump command found: %s\n", jump_desc);
 				printf("directory: %.*s\n", (int)fetched.dsize, fetched.dptr);
 
+				char buf[BUF_SIZE] = {0};
 
-				int result = chdir(dir);
+				char *editor = "nvim";
+
+				snprintf(buf, BUF_SIZE, "%s %s", editor, dir);
+
+				execlp("bash", "bash",
+						"-c",
+						buf,
+						(char*)NULL);
 			}
 
 			// I hate C
