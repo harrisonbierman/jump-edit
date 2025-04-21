@@ -32,7 +32,7 @@ Cmd parse_cmd(const char *buf) {
   	if(!strcmp(buf, "list")) return CMD_LIST;
 	if(!strcmp(buf, "add")) return CMD_ADD;
 	if(!strcmp(buf, "rm"))  return CMD_REMOVE; 
-	if(!strcmp(buf, "editor"))  return CMD_EDITOR; 
+	if(!strcmp(buf, "default-editor"))  return CMD_EDITOR; 
 	if(!strcmp(buf, "--help")) return CMD_HELP;
 	return CMD_OTHER;
 }
@@ -82,6 +82,7 @@ int main(int argc, char **argv) {
 		// don't need to null terminate again b/c buf is safe
 		if (i == 3) memcpy(arg3, buf, BUF_SIZE);
 
+		// add functionality to add as many arguments as I want
 		if (i == 4) {
 			fprintf(stderr, "Too many agruments\n");
 			return 1;
@@ -141,8 +142,10 @@ int main(int argc, char **argv) {
 				if (gdbm_errno == GDBM_ITEM_NOT_FOUND) {
 					fprintf(stderr, "je: \'%s\' is not a je command. ", jump_desc);
 					fprintf(stderr, "See 'je --help' or 'je list' for a list of user jumps\n");
+					return 1;
 				} else {
 					fprintf(stderr, "Error: %s\n", gdbm_db_strerror(db));
+					return 1;
 				}
 			} else {
 
@@ -153,16 +156,38 @@ int main(int argc, char **argv) {
 				printf("jump command found: %s\n", jump_desc);
 				printf("directory: %.*s\n", (int)fetched.dsize, fetched.dptr);
 
+
+
+				// grab default editor from db
+				datum default_editor_key = { (void*)"default-editor\0", 15 };
+
+				datum fetched_editor = gdbm_fetch(db, default_editor_key);
+
+				if(fetched_editor.dptr == NULL) {
+					if(gdbm_errno == GDBM_ITEM_NOT_FOUND) {
+						fprintf(stderr, "je: Could not run command because a default editor has not been set. ");
+						fprintf(stderr, "use 'je default-editor [editor command]' to set\n");
+						return 1;
+					} else {
+						fprintf(stderr, "Error: %s\n", gdbm_db_strerror(db));
+						return 1;
+					}
+				}
+
 				char buf[BUF_SIZE] = {0};
 
-				char *editor = "nvim";
+				char *default_editor = malloc(sizeof(fetched_editor.dptr));
+				memcpy(default_editor, fetched_editor.dptr, fetched_editor.dsize);
 
-				snprintf(buf, BUF_SIZE, "%s %s", editor, dir);
+				snprintf(buf, BUF_SIZE, "%s %s", default_editor, dir);
 
 				execlp("bash", "bash",
 						"-c",
 						buf,
 						(char*)NULL);
+				
+				free(default_editor_key.dptr);
+				free(default_editor);
 			}
 
 			// I hate C
@@ -288,11 +313,31 @@ int main(int argc, char **argv) {
 				printf("je: Jump descriptor '%s' successfully removed\n", arg2);
 			}
 
+			free(remove_desc_key.dptr);
+
 
 			break;
 
 		case CMD_EDITOR: // set/change default editor
-						
+			// should I make another db to just hold the editor
+			// or should I just make another unique command 
+			// and store it into the db 
+
+			datum default_editor_key = { (void*)"default-editor\0", 15 };
+			datum default_editor_val = { (void*)arg2, strlen(arg2) };
+
+			gdbm_store(db, default_editor_key, default_editor_val, GDBM_REPLACE);
+			if (store_return == -1) {
+				fprintf(stderr, "%s: could not store value into database\n", 
+						gdbm_strerror(gdbm_errno));
+			} else {
+				printf("je: Storing default editor '%s' successful\n",
+						arg2);
+			}
+
+
+
+
 			break;
 
 		case CMD_HELP:   // you know
