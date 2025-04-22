@@ -32,7 +32,7 @@ Cmd parse_cmd(const char *buf) {
   	if(!strcmp(buf, "list")) return CMD_LIST;
 	if(!strcmp(buf, "add")) return CMD_ADD;
 	if(!strcmp(buf, "rm"))  return CMD_REMOVE; 
-	if(!strcmp(buf, "default-editor"))  return CMD_EDITOR; 
+	if(!strcmp(buf, "de"))  return CMD_EDITOR; 
 	if(!strcmp(buf, "--help")) return CMD_HELP;
 	return CMD_OTHER;
 }
@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
 	int char_written= snprintf(je_dir, BUF_SIZE, "%s/.local/share/je", xdg_data_home);
 	assert(char_written < BUF_SIZE); // if attempted chars does not fit into buffer
 
-	// concat je directory to je database file
+	// concat je directory to je.gdbm database file
 	char je_gdbm_dir[BUF_SIZE];
 	char_written = snprintf(je_gdbm_dir, BUF_SIZE, "%s/je.gdbm", je_dir);
 	assert(char_written < BUF_SIZE);
@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
 
 	// handle commands
 	switch(cmd) {
-		case CMD_OTHER:  // check db for user commands
+		case CMD_OTHER: { // check db for user commands
 			
 			datum jump_desc_key = { (void*)jump_desc, strlen(jump_desc) };
 			datum fetched = gdbm_fetch(db, jump_desc_key);
@@ -149,13 +149,9 @@ int main(int argc, char **argv) {
 				}
 			} else {
 
-				char *dir = malloc(fetched.dsize + 1);
-				memcpy(dir, fetched.dptr, fetched.dsize);
-				dir[fetched.dsize] = '\0';
-
-				printf("jump command found: %s\n", jump_desc);
-				printf("directory: %.*s\n", (int)fetched.dsize, fetched.dptr);
-
+				char *path = malloc(fetched.dsize + 1);
+				memcpy(path, fetched.dptr, fetched.dsize);
+				path[fetched.dsize] = '\0';
 
 
 				// grab default editor from db
@@ -174,12 +170,36 @@ int main(int argc, char **argv) {
 					}
 				}
 
-				char buf[BUF_SIZE] = {0};
 
-				char *default_editor = malloc(sizeof(fetched_editor.dptr));
-				memcpy(default_editor, fetched_editor.dptr, fetched_editor.dsize);
+				size_t ed_len = fetched_editor.dsize;
+				char *default_editor = malloc(ed_len + 1);
+				if(!default_editor) {perror("malloc"); exit(1); }
+				memcpy(default_editor, fetched_editor.dptr, ed_len);
+				default_editor[ed_len] = '\0';
 
-				snprintf(buf, BUF_SIZE, "%s %s", default_editor, dir);
+
+				// calculate how many bytes we need for the next
+				// snprintf. It's a more precise way of doing it
+				// rather than just guessing a bigger buffer size.
+				int needed = snprintf(NULL, 0, "%s %s", default_editor, path);
+				if (needed < 0) { perror("malloc"); exit(1); }
+
+				char *command = malloc(needed + 1);
+				if (!command) { perror("malloc"); exit(1); }
+
+				char buf[needed + 1];
+
+				snprintf(buf, needed + 1, "%s %s", default_editor, path);
+
+
+
+				// important to close db here or else it will continue 
+				// to be open while editing a jump path. If db
+				// stays open, other instances cannot write to the db.
+				gdbm_close(db);
+
+				printf("je: jump: %s | editor: %s\n", jump_desc, default_editor);
+				fflush(stdout);
 
 				execlp("bash", "bash",
 						"-c",
@@ -194,15 +214,26 @@ int main(int argc, char **argv) {
 			free(fetched.dptr);
 
 
-
 			break;
+		}
 
-		case CMD_LIST:   // print list and directories
+		case CMD_LIST: {   // print list and directories
+			
+			// need to display current default editor at the top
+			// dont need to add null terminator because it was stored with one
+			datum default_editor_key = { (void*)"default-editor\0", 15 };
+			datum editor_fetched = gdbm_fetch(db, default_editor_key);
+			char *default_editor = malloc(editor_fetched.dsize);
+			memcpy(default_editor, editor_fetched.dptr, editor_fetched.dsize);
+
+			printf("List of jump descriptors and paths\n\n");
+			printf("Default Editor: %s\n\n", default_editor);
+
 
 			datum firstkey = gdbm_firstkey(db);
 			if (firstkey.dptr == NULL) {
 				if(gdbm_errno == GDBM_ITEM_NOT_FOUND) {
-					fprintf(stderr, "je: No jump descripors in database. Use 'je add [descriptor]'\n");
+					fprintf(stderr, "je: No jump descriptors in database. Use 'je add [descriptor]'\n");
 					return 1;
 				} else {
 					fprintf(stderr, "Error: %s\n", gdbm_db_strerror(db));
@@ -222,14 +253,17 @@ int main(int argc, char **argv) {
 			keystr[firstkey.dsize] = '\0'; // b/c it's index
 
 			// fetched directory from key
-			fetched = gdbm_fetch(db, firstkey); 
+			datum fetched = gdbm_fetch(db, firstkey); 
 			char *dirstr = malloc(fetched.dsize + 1);
 			memcpy(dirstr, fetched.dptr, fetched.dsize);
 			dirstr[fetched.dsize] = '\0';
 
-
-			printf("List of jump descriptors and paths\n");
-			printf("Desc: %s :: Path: %s\n", keystr, dirstr);
+			// because we are using the same database for storing the
+			// default-editor we need to not display it like other
+			// jump descriptors
+			if(strcmp(keystr, "default-editor")) {
+				printf("Desc: %s :: Path: %s\n", keystr, dirstr);
+			}
 
 			datum nextkey = gdbm_nextkey(db, firstkey);
 
@@ -239,19 +273,21 @@ int main(int argc, char **argv) {
 			free(fetched.dptr);
 
 
-			// make this sort alphabetically later
+			// maybe make this sort alphabetically later
 			while (nextkey.dptr != NULL) {
 
 				char *keystr = malloc(nextkey.dsize + 1);
 				memcpy(keystr, nextkey.dptr, nextkey.dsize);
 				keystr[nextkey.dsize] = '\0';
 
-				fetched = gdbm_fetch(db, nextkey); 
+				datum fetched = gdbm_fetch(db, nextkey); 
 				char *dirstr = malloc(fetched.dsize + 1);
 				memcpy(dirstr, fetched.dptr, fetched.dsize);
 				dirstr[fetched.dsize] = '\0';
 
-				printf("Desc: %s :: Path: %s\n", keystr, dirstr);
+				if(strcmp(keystr, "default-editor")) {
+					printf("Desc: %s :: Path: %s\n", keystr, dirstr);
+				}
 
 				free(keystr);
 				free(dirstr);
@@ -268,8 +304,9 @@ int main(int argc, char **argv) {
 			free(nextkey.dptr);
 
 			break;
+		}
 
-		case CMD_ADD:    // adds user command
+		case CMD_ADD: {   // adds user command
 
 			// if something was not written into it
 
@@ -300,8 +337,9 @@ int main(int argc, char **argv) {
 			}
 
 			break;
+		}
 
-		case CMD_REMOVE: // removes user command
+		case CMD_REMOVE: {// removes user command
 
 			datum remove_desc_key = { (void*)arg2, strlen(arg2) };
 
@@ -318,7 +356,9 @@ int main(int argc, char **argv) {
 
 			break;
 
-		case CMD_EDITOR: // set/change default editor
+		}
+
+		case CMD_EDITOR: { // set/change default editor
 			// should I make another db to just hold the editor
 			// or should I just make another unique command 
 			// and store it into the db 
@@ -326,7 +366,7 @@ int main(int argc, char **argv) {
 			datum default_editor_key = { (void*)"default-editor\0", 15 };
 			datum default_editor_val = { (void*)arg2, strlen(arg2) };
 
-			gdbm_store(db, default_editor_key, default_editor_val, GDBM_REPLACE);
+			int store_return = gdbm_store(db, default_editor_key, default_editor_val, GDBM_REPLACE);
 			if (store_return == -1) {
 				fprintf(stderr, "%s: could not store value into database\n", 
 						gdbm_strerror(gdbm_errno));
@@ -340,10 +380,35 @@ int main(int argc, char **argv) {
 
 			break;
 
-		case CMD_HELP:   // you know
+		}
+
+		case CMD_HELP: { // you know
 						 
+			fprintf(stdout, "Welcome to je (J)ump (E)dit\n\n"
+					"Usage:\n"
+					"   je <desc>             Jump to user (desc)riptor path and open editor\n"
+					"   je add <desc> <path>  (Add) a user jump (desc)riptor and specify (path)\n"
+					"   je rm  <desc>         (Re)moves a user jump (desc)riptor\n"
+					"   je de  <editor>       Specifies (d)efault (e)ditor when opening paths\n"
+					"   je list               Displays jump descriptors (list) and their paths\n"
+					"   je --help             Prints help\n\n"
+					"Description:\n"
+					"   je (Jump Edit) allows you to save a file path and a corresponding \n"
+					"   user made descriptor. A descriptor is a user made name to identify \n" 
+					"   a specific path. je needs you to specify a default-editor \n"
+					"   to open your path. After you have chosen a default-editor, you can \n"
+					"   jump to any saved paths and je will open that path in your default-editor \n\n"
+					"Important Information:\n"
+					"   - je opens a new shell on top of your previous shell. \n"
+					"   - je was build for max typing efficiency, thus the base command 'je <desc>' \n"
+					"     will be blocked by any sub command i.e.(list, add, rm, ...). This means you \n"
+					"     can not name any user descriptors a name that is already a je sub command \n"
+					"Happy Jumping!\n"
+			);
+
 			break;
 
+		}
 	}
 
 
