@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <regex.h>
 #include <gdbm.h>
 #include <unistd.h> // chdir()
 
@@ -35,6 +36,48 @@ Cmd parse_cmd(const char *buf) {
 	if(!strcmp(buf, "de"))  return CMD_EDITOR; 
 	if(!strcmp(buf, "--help")) return CMD_HELP;
 	return CMD_OTHER;
+}
+
+char *get_match(const char *pattern, const char *string) {
+	regex_t regex;
+	regmatch_t match[1]; // Array for matches: [0] is whole match
+	int ret;
+
+	// compile regex
+	ret = regcomp(&regex, pattern, REG_EXTENDED);
+	if (ret) {
+		fprintf(stderr, "Could not compile regex\n");
+		return NULL;
+	}
+
+	ret = regexec(&regex, string, 1, match, 0);
+	if (ret == REG_NOMATCH) {
+		regfree(&regex);
+		return NULL;
+	} else if (ret != 0) {
+		char errbuf[100];
+		regerror(ret, &regex, errbuf, sizeof(errbuf));
+		fprintf(stderr, "Regex match failed: %s\n", errbuf);
+		regfree(&regex);
+		return NULL;
+	}
+
+	int start = match[0].rm_so;
+	int end = match[0].rm_eo;
+
+	size_t len = end - start;
+	char *matched = malloc(len + 1);
+	if (!matched) { 
+		perror("malloc"); 
+		regfree(&regex);
+		return NULL;
+	}
+
+	strncpy(matched, string + start, len);
+	matched[len] = '\0';
+
+	regfree(&regex);
+	return matched; // caller must free
 }
 
 int main(int argc, char **argv) {
@@ -244,7 +287,6 @@ int main(int argc, char **argv) {
 
 			printf("Default Editor: %s\n\n", default_editor);
 
-
 			datum key = gdbm_firstkey(db);
 
 			if (key.dptr == NULL) {
@@ -258,6 +300,14 @@ int main(int argc, char **argv) {
 					return 1;
 				}
 			}
+
+			/*
+			 * since the jump path and the shell dir are stored in
+			 * the database as one string ie "jump/path/somefile.c shell/dir"
+			 * and separated by a space. we need to separate each path
+			 * at the space and store them in their own variables
+			 */
+
 
 			size_t num_desc = 0;
 			int has_default_editor = 0;
@@ -284,9 +334,11 @@ int main(int argc, char **argv) {
 				// default-editor we need to not display it like other
 				// jump descriptors
 				if(strcmp(keystr, "default-editor")) {
-					printf("Desc: %s \n"
-							"Path: %s\n\n", keystr, pathstr);
 					num_desc++;
+					printf("Desc: %s \n"
+							"Jump Path: %s\n"
+							"Shell Dir: %s\n"
+							, keystr, pathstr, dirstr);
 				} else {
 					has_default_editor = 1;
 				}
