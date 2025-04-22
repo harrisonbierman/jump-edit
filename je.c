@@ -351,10 +351,11 @@ int main(int argc, char **argv) {
 
 				// allocate exact buffer length for both strings
 				int needed = snprintf(NULL, 0, "%s %s", arg3, arg4);
+
 				temp_concat = malloc(needed + 1);
 				if(!temp_concat) { perror("malloc"); exit(1); }
+
 				snprintf(temp_concat, needed + 1, "%s %s", arg3, arg4);
-				printf("ar2_and_arg3: %s\n", temp_concat);
 
 				add_desc_val.dptr = (void*)temp_concat;
 				add_desc_val.dsize = strlen(temp_concat);
@@ -363,7 +364,6 @@ int main(int argc, char **argv) {
 
 				add_desc_val.dptr = (void*)arg3;
 				add_desc_val.dsize = strlen(arg3);
-				
 
 			}
 
@@ -375,14 +375,20 @@ int main(int argc, char **argv) {
 				fprintf(stderr, "%s: could not store value into database\n", 
 						gdbm_strerror(gdbm_errno));
 			} else if (store_return == 1) {
-				printf("je: Error, cound not add jump descriptor '%s' because it already exist. ", arg2);
-				printf("Use 'je rm [descriptor]' first if you want to replace it\n");
+				printf("je: Error, cound not add jump descriptor '%s' because it already exist. "
+						"Use 'je rm [descriptor]' first if you want to replace it\n",
+						arg2);
 			} else if (*arg4 == '\0') {
-				printf("je: Success, new descriptor '%s' added with path '%s'\n",
+				printf("\nje: Success\n"
+						" New Descriptor:.'%s'\n"
+						" Jump Path:......'%s'\n"
+						" Project Root:...'none'\n",
 						arg2, arg3);
 			} else {
-				printf("je: Success, new descriptor: '%s' added with path: '%s' "
-						"and project root: %s\n",
+				printf("\nje: Success\n"
+						" New Descriptor:.'%s'\n"
+						" Jump Path:......'%s'\n"
+						" Project Root:...'%s'\n",
 						arg2, arg3, arg4);
 			}
 
