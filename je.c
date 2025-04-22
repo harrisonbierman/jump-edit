@@ -38,9 +38,9 @@ Cmd parse_cmd(const char *buf) {
 	return CMD_OTHER;
 }
 
-char *get_match(const char *pattern, const char *string) {
+char *get_matches(const char *pattern, const char *string, int group_index, int n_groups) {
 	regex_t regex;
-	regmatch_t match[1]; // Array for matches: [0] is whole match
+	regmatch_t matches[n_groups + 1]; // Array for matches: [0] is whole match
 	int ret;
 
 	// compile regex
@@ -50,7 +50,7 @@ char *get_match(const char *pattern, const char *string) {
 		return NULL;
 	}
 
-	ret = regexec(&regex, string, 1, match, 0);
+	ret = regexec(&regex, string, n_groups + 1, matches, 0);
 	if (ret == REG_NOMATCH) {
 		regfree(&regex);
 		return NULL;
@@ -62,22 +62,35 @@ char *get_match(const char *pattern, const char *string) {
 		return NULL;
 	}
 
-	int start = match[0].rm_so;
-	int end = match[0].rm_eo;
+	if(matches[group_index].rm_so == -1) {
+		fprintf(stderr, "Group does not exist\n");
+		regfree(&regex);
+		return NULL;
+	}
+
+	int start = matches[group_index].rm_so; //start of
+	int end = matches[group_index].rm_eo;   // end of 
 
 	size_t len = end - start;
-	char *matched = malloc(len + 1);
-	if (!matched) { 
+
+	if (len <= 0) {
+		fprintf(stderr, "invalid match length. end: %d, start %d\n", end, start);
+		regfree(&regex);
+		return NULL;
+	}
+
+	char *substr = malloc(len + 1);
+	if (!substr) { 
 		perror("malloc"); 
 		regfree(&regex);
 		return NULL;
 	}
 
-	strncpy(matched, string + start, len);
-	matched[len] = '\0';
+	strncpy(substr, string + start, len);
+	substr[len] = '\0';
 
 	regfree(&regex);
-	return matched; // caller must free
+	return substr; // caller must free
 }
 
 int main(int argc, char **argv) {
@@ -301,19 +314,15 @@ int main(int argc, char **argv) {
 				}
 			}
 
-			/*
-			 * since the jump path and the shell dir are stored in
-			 * the database as one string ie "jump/path/somefile.c shell/dir"
-			 * and separated by a space. we need to separate each path
-			 * at the space and store them in their own variables
-			 */
 
+			
 
 			size_t num_desc = 0;
 			int has_default_editor = 0;
 
 			// maybe make this sort alphabetically later
 			while (key.dptr != NULL) {
+
 				
 				/*
 				 * because the datum's pointer holds the raw
@@ -326,18 +335,29 @@ int main(int argc, char **argv) {
 
 				// fetched directory from key
 				datum fetched = gdbm_fetch(db, key); 
-				char *pathstr = malloc(fetched.dsize + 1);
-				memcpy(pathstr, fetched.dptr, fetched.dsize);
-				pathstr[fetched.dsize] = '\0';
+				char *valstr = malloc(fetched.dsize + 1);
+				memcpy(valstr, fetched.dptr, fetched.dsize);
+				valstr[fetched.dsize] = '\0';
+
+				/*
+				 * since the jump path and the shell dir are stored in
+				 * the database as one string ie "jump/path/somefile.c shell/dir"
+				 * and separated by a space. we need to separate each path
+				 * at the space and store them in their own variables
+				 */
+				char *pattern = "^(\\S+)\\s+(\\S+)$"; // split the two paths at the space
+				char *pathstr = get_matches(pattern, valstr, 1, 2);
+				char *dirstr = get_matches(pattern, valstr, 2, 2);
+
 
 				// because we are using the same database for storing the
 				// default-editor we need to not display it like other
 				// jump descriptors
 				if(strcmp(keystr, "default-editor")) {
 					num_desc++;
-					printf("Desc: %s \n"
-							"Jump Path: %s\n"
-							"Shell Dir: %s\n"
+					printf("Descriptor: %s \n"
+							" Jump Path: %s\n"
+							" Shell Dir: %s\n\n"
 							, keystr, pathstr, dirstr);
 				} else {
 					has_default_editor = 1;
@@ -345,6 +365,7 @@ int main(int argc, char **argv) {
 
 				free(keystr);
 				free(pathstr);
+				free(dirstr);
 				free(fetched.dptr);
 
 				datum oldkey = key;
