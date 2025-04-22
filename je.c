@@ -242,14 +242,16 @@ int main(int argc, char **argv) {
 			char *default_editor = malloc(editor_fetched.dsize);
 			memcpy(default_editor, editor_fetched.dptr, editor_fetched.dsize);
 
-			printf("List of jump descriptors and paths\n\n");
 			printf("Default Editor: %s\n\n", default_editor);
 
 
-			datum firstkey = gdbm_firstkey(db);
-			if (firstkey.dptr == NULL) {
+			datum key = gdbm_firstkey(db);
+
+			if (key.dptr == NULL) {
 				if(gdbm_errno == GDBM_ITEM_NOT_FOUND) {
-					fprintf(stderr, "je: No jump descriptors in database. Use 'je add [descriptor]'\n");
+					fprintf(stderr, "je: Error\n"
+							" No default editor or jump descriptors in database.\n"
+							" See 'je --help'\n");
 					return 1;
 				} else {
 					fprintf(stderr, "Error: %s\n", gdbm_db_strerror(db));
@@ -257,67 +259,56 @@ int main(int argc, char **argv) {
 				}
 			}
 
-
-
-			/*
-			 * because the datum's pointer holds the raw
-			 * data without a null terminator, wee need to
-			 * malloc room at the end for '\0' when storing
-			*/
-			char *keystr = malloc(firstkey.dsize + 1);
-			memcpy(keystr, firstkey.dptr, firstkey.dsize);
-			keystr[firstkey.dsize] = '\0'; // b/c it's index
-
-			// fetched directory from key
-			datum fetched = gdbm_fetch(db, firstkey); 
-			char *dirstr = malloc(fetched.dsize + 1);
-			memcpy(dirstr, fetched.dptr, fetched.dsize);
-			dirstr[fetched.dsize] = '\0';
-
-			// because we are using the same database for storing the
-			// default-editor we need to not display it like other
-			// jump descriptors
-			if(strcmp(keystr, "default-editor")) {
-				printf("Desc: %s :: Path: %s\n", keystr, dirstr);
-			}
-
-			datum nextkey = gdbm_nextkey(db, firstkey);
-
-			free(keystr);
-			free(dirstr);
-			free(firstkey.dptr);
-			free(fetched.dptr);
-
+			size_t num_desc = 0;
+			int has_default_editor = 0;
 
 			// maybe make this sort alphabetically later
-			while (nextkey.dptr != NULL) {
+			while (key.dptr != NULL) {
+				
+				/*
+				 * because the datum's pointer holds the raw
+				 * data without a null terminator, wee need to
+				 * malloc room at the end for '\0' when storing
+				*/
+				char *keystr = malloc(key.dsize + 1);
+				memcpy(keystr, key.dptr, key.dsize);
+				keystr[key.dsize] = '\0';
 
-				char *keystr = malloc(nextkey.dsize + 1);
-				memcpy(keystr, nextkey.dptr, nextkey.dsize);
-				keystr[nextkey.dsize] = '\0';
+				// fetched directory from key
+				datum fetched = gdbm_fetch(db, key); 
+				char *pathstr = malloc(fetched.dsize + 1);
+				memcpy(pathstr, fetched.dptr, fetched.dsize);
+				pathstr[fetched.dsize] = '\0';
 
-				datum fetched = gdbm_fetch(db, nextkey); 
-				char *dirstr = malloc(fetched.dsize + 1);
-				memcpy(dirstr, fetched.dptr, fetched.dsize);
-				dirstr[fetched.dsize] = '\0';
-
+				// because we are using the same database for storing the
+				// default-editor we need to not display it like other
+				// jump descriptors
 				if(strcmp(keystr, "default-editor")) {
-					printf("Desc: %s :: Path: %s\n", keystr, dirstr);
+					printf("Desc: %s \n"
+							"Path: %s\n\n", keystr, pathstr);
+					num_desc++;
+				} else {
+					has_default_editor = 1;
 				}
 
 				free(keystr);
-				free(dirstr);
+				free(pathstr);
 				free(fetched.dptr);
 
-				datum oldkey = nextkey;
+				datum oldkey = key;
 
-				nextkey = gdbm_nextkey(db, oldkey);
+				key = gdbm_nextkey(db, oldkey);
 
 				free(oldkey.dptr);
 
 			}
-
-			free(nextkey.dptr);
+			
+			// if there is a default editor but no added descriptors
+			if(num_desc == 0 && has_default_editor) {
+				printf("je: Error\n"
+						" No jump descriptors in database.\n"
+						" See 'je --help'\n");
+			}
 
 			break;
 		}
