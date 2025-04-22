@@ -47,6 +47,7 @@ int main(int argc, char **argv) {
 	// just set first char to null terminator saves CPU time 
 	char arg2[BUF_SIZE];		arg2[0] = '\0';
 	char arg3[BUF_SIZE];		arg3[0] = '\0';
+	char arg4[BUF_SIZE];        arg4[0] = '\0';
 
 	// Extract argument and make them safe
 	// i is 1 b/c first arg is 'je'
@@ -84,8 +85,7 @@ int main(int argc, char **argv) {
 
 		// add functionality to add as many arguments as I want
 		if (i == 4) {
-			fprintf(stderr, "Too many agruments\n");
-			return 1;
+			memcpy(arg4, buf, BUF_SIZE);
 		}
 
 	}
@@ -178,6 +178,12 @@ int main(int argc, char **argv) {
 				default_editor[ed_len] = '\0';
 
 
+				// important to close db here or else it will continue 
+				// to be open while editing a jump path. If db
+				// stays open, other instances cannot write to the db.
+				gdbm_close(db);
+
+
 				// calculate how many bytes we need for the next
 				// snprintf. It's a more precise way of doing it
 				// rather than just guessing a bigger buffer size.
@@ -187,23 +193,33 @@ int main(int argc, char **argv) {
 				char *command = malloc(needed + 1);
 				if (!command) { perror("malloc"); exit(1); }
 
-				char buf[needed + 1];
+				char editor_open_path[needed + 1];
 
-				snprintf(buf, needed + 1, "%s %s", default_editor, path);
+				// if a project root was enabled it will cd the new shell there
+				if (arg4[0] != '\0') {
+					printf("Project Root Dir: %s", arg4);
+				}
 
-
-
-				// important to close db here or else it will continue 
-				// to be open while editing a jump path. If db
-				// stays open, other instances cannot write to the db.
-				gdbm_close(db);
+				snprintf(editor_open_path, needed + 1, "%s %s", default_editor, path);
 
 				printf("je: jump: %s | editor: %s\n", jump_desc, default_editor);
-				fflush(stdout);
+				fflush(stdout); // force write I/O buffer
+				
 
+				needed = snprintf(NULL, 0, "cd %s && %s %s", path, default_editor, path);
+				if (needed < 0) { perror("malloc"); exit(1); }
+
+				char new_shell_cmd[needed + 1];
+
+				snprintf(new_shell_cmd, needed + 1, "cd %s && %s %s", path, default_editor, path);
+
+				// need to figure out a way to detect if the path 
+				// given is a file or directory and also maybe add
+				// a way to add a root project directory if needed for
+				// saving purposes.
 				execlp("bash", "bash",
 						"-c",
-						buf,
+						editor_open_path, // editor_open_path does not cd into the path dir
 						(char*)NULL);
 				
 				free(default_editor_key.dptr);
@@ -321,19 +337,53 @@ int main(int argc, char **argv) {
 			}
 
 
-			datum add_desc_key = { (void*)arg2, strlen(arg2) };
-			datum add_desc_val = { (void*)arg3, strlen(arg3) };
+			datum add_desc_key = { 
+				.dptr = (void*)arg2, 
+				.dsize = strlen(arg2) 
+			};
+			datum add_desc_val;
+
+			char *temp_concat = NULL; // temp pointer for malloc'd concat
+
+			// if there is a root project directory provided concat it to the
+			// value to be parsed later when pull out of database
+			if(*arg4 != '\0') {	
+
+				// allocate exact buffer length for both strings
+				int needed = snprintf(NULL, 0, "%s %s", arg3, arg4);
+				temp_concat = malloc(needed + 1);
+				if(!temp_concat) { perror("malloc"); exit(1); }
+				snprintf(temp_concat, needed + 1, "%s %s", arg3, arg4);
+				printf("ar2_and_arg3: %s\n", temp_concat);
+
+				add_desc_val.dptr = (void*)temp_concat;
+				add_desc_val.dsize = strlen(temp_concat);
+
+			} else {
+
+				add_desc_val.dptr = (void*)arg3;
+				add_desc_val.dsize = strlen(arg3);
+				
+
+			}
 
 			int store_return = gdbm_store(db, add_desc_key, add_desc_val, GDBM_INSERT);
+
+			if(temp_concat) free(temp_concat);
+
 			if (store_return == -1) {
 				fprintf(stderr, "%s: could not store value into database\n", 
 						gdbm_strerror(gdbm_errno));
 			} else if (store_return == 1) {
-				printf("je: Cound not add jump descriptor '%s' because it already exist. ", arg2);
+				printf("je: Error, cound not add jump descriptor '%s' because it already exist. ", arg2);
 				printf("Use 'je rm [descriptor]' first if you want to replace it\n");
-			} else {
-				printf("je: Storing descriptor '%s' with file path '%s' successful\n",
+			} else if (*arg4 == '\0') {
+				printf("je: Success, new descriptor '%s' added with path '%s'\n",
 						arg2, arg3);
+			} else {
+				printf("je: Success, new descriptor: '%s' added with path: '%s' "
+						"and project root: %s\n",
+						arg2, arg3, arg4);
 			}
 
 			break;
@@ -345,14 +395,11 @@ int main(int argc, char **argv) {
 
 			int delete_return = gdbm_delete(db, remove_desc_key);
 			if (delete_return == -1) {
-				fprintf(stderr, "je: Could not remove descriptor '%s', not found in database\n",
+				fprintf(stderr, "je: Error, could not remove descriptor '%s', not found in database\n",
 						arg2);
 			} else {
-				printf("je: Jump descriptor '%s' successfully removed\n", arg2);
+				printf("je: Success, jump descriptor '%s' removed\n", arg2);
 			}
-
-			free(remove_desc_key.dptr);
-
 
 			break;
 
@@ -371,8 +418,7 @@ int main(int argc, char **argv) {
 				fprintf(stderr, "%s: could not store value into database\n", 
 						gdbm_strerror(gdbm_errno));
 			} else {
-				printf("je: Storing default editor '%s' successful\n",
-						arg2);
+				printf("je: Success, saving '%s' as default editor\n", arg2);
 			}
 
 
@@ -390,7 +436,7 @@ int main(int argc, char **argv) {
 					"   je add <desc> <path>  (Add) a user jump (desc)riptor and specify (path)\n"
 					"   je rm  <desc>         (Re)moves a user jump (desc)riptor\n"
 					"   je de  <editor>       Specifies (d)efault (e)ditor when opening paths\n"
-					"   je list               Displays jump descriptors (list) and their paths\n"
+					"   je list               Displays jump descriptor (list) and their paths\n"
 					"   je --help             Prints help\n\n"
 					"Description:\n"
 					"   je (Jump Edit) allows you to save a file path and a corresponding \n"
@@ -400,6 +446,7 @@ int main(int argc, char **argv) {
 					"   jump to any saved paths and je will open that path in your default-editor \n\n"
 					"Important Information:\n"
 					"   - je opens a new shell on top of your previous shell. \n"
+					"     As soon as you exit the editor you will return to the previous shell\n"
 					"   - je was build for max typing efficiency, thus the base command 'je <desc>' \n"
 					"     will be blocked by any sub command i.e.(list, add, rm, ...). This means you \n"
 					"     can not name any user descriptors a name that is already a je sub command \n"
