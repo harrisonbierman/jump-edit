@@ -234,8 +234,22 @@ int main(int argc, char **argv) {
 
 				char *pattern = "^(.+):::(.+)$";
 				char *pathstr = get_matches(pattern, valstr, 1, 2);
-				char *dirstr= get_matches(pattern, valstr, 2, 2);
+				char *dirstr = get_matches(pattern, valstr, 2, 2);
 
+				// add quotes around each path as a guard against spacing
+				// in path. Might as well just put quotes around every path
+				// instead of checking if it has spaces for simplicity
+				int needed = snprintf(NULL, 0, "\"%s\"", pathstr);
+				char *quoted_pathstr = malloc(needed + 1);
+				if (!quoted_pathstr) { perror("malloc"); exit(1); }
+				snprintf(quoted_pathstr, needed + 1, "\"%s\"", pathstr);
+
+				needed = snprintf(NULL, 0, "\"%s\"", dirstr);
+				char *quoted_dirstr = malloc(needed + 1);
+				if (!quoted_dirstr) { perror("malloc"); exit(1); }
+				snprintf(quoted_dirstr, needed + 1, "\"%s\"", dirstr);
+
+			
 				// grab default editor from db
 				datum default_editor_key = { (void*)"default-editor\0", 15 };
 				datum fetched_editor = gdbm_fetch(db, default_editor_key);
@@ -267,10 +281,10 @@ int main(int argc, char **argv) {
 				// calculate how many bytes we need for the next
 				// snprintf. It's a more precise way of doing it
 				// rather than just guessing a bigger buffer size.
-				int needed = snprintf(NULL, 0, "cd %s && %s %s", dirstr, default_editor, pathstr);
+				needed = snprintf(NULL, 0, "cd %s && %s %s", quoted_dirstr, default_editor, quoted_pathstr);
 				if (needed < 0) { perror("malloc"); exit(1); }
 				char run_cd_jump[needed + 1];
-				snprintf(run_cd_jump, needed + 1, "cd %s && %s %s", dirstr, default_editor, pathstr);
+				snprintf(run_cd_jump, needed + 1, "cd %s && %s %s", quoted_dirstr, default_editor, quoted_pathstr);
 
 				// open new shell
 				execlp("bash", "bash",
@@ -281,6 +295,8 @@ int main(int argc, char **argv) {
 
 				free(dirstr);
 				free(pathstr);
+				free(quoted_dirstr);
+				free(quoted_dirstr);
 				free(default_editor_key.dptr);
 				free(default_editor);
 			}
