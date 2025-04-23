@@ -93,6 +93,28 @@ char *get_matches(const char *pattern, const char *string, int group_index, int 
 	return substr; // caller must free
 }
 
+int is_file(char *path) {
+
+	struct stat st;
+
+	if(stat(path, &st) < 0) {
+		perror("stat");
+		exit(1);
+	}
+
+	if (S_ISDIR(st.st_mode)) {
+		return 0;
+	} else if (S_ISREG(st.st_mode)) {
+		return 1;
+	} else {
+		fprintf(stderr, "je: Error \n"
+						" Path '%s' is not a valid file or directory\n",
+						path
+		);
+		exit(1);
+	}
+}
+
 int main(int argc, char **argv) {
 	
 	// arg1 will be a sub_command or a jump descriptor
@@ -205,18 +227,21 @@ int main(int argc, char **argv) {
 				}
 			} else {
 
-				char *path = malloc(fetched.dsize + 1);
-				memcpy(path, fetched.dptr, fetched.dsize);
-				path[fetched.dsize] = '\0';
+				// prepare jump path and shell dir for pattern matching
+				char *valstr = malloc(fetched.dsize + 1);
+				memcpy(valstr, fetched.dptr, fetched.dsize);
+				valstr[fetched.dsize] = '\0';
 
+				char *pattern = "^(\\S+)\\s+(\\S+)$";
+				char *pathstr = get_matches(pattern, valstr, 1, 2);
+				char *dirstr= get_matches(pattern, valstr, 2, 2);
 
 				// grab default editor from db
 				datum default_editor_key = { (void*)"default-editor\0", 15 };
-
 				datum fetched_editor = gdbm_fetch(db, default_editor_key);
 
-				if(fetched_editor.dptr == NULL) {
-					if(gdbm_errno == GDBM_ITEM_NOT_FOUND) {
+				if (fetched_editor.dptr == NULL) {
+					if (gdbm_errno == GDBM_ITEM_NOT_FOUND) {
 						fprintf(stderr, "je: Could not run command because a default editor has not been set. ");
 						fprintf(stderr, "use 'je default-editor [editor command]' to set\n");
 						return 1;
@@ -239,45 +264,23 @@ int main(int argc, char **argv) {
 				// stays open, other instances cannot write to the db.
 				gdbm_close(db);
 
-
 				// calculate how many bytes we need for the next
 				// snprintf. It's a more precise way of doing it
 				// rather than just guessing a bigger buffer size.
-				int needed = snprintf(NULL, 0, "%s %s", default_editor, path);
+				int needed = snprintf(NULL, 0, "cd %s && %s %s", dirstr, default_editor, pathstr);
 				if (needed < 0) { perror("malloc"); exit(1); }
+				char run_cd_jump[needed + 1];
+				snprintf(run_cd_jump, needed + 1, "cd %s && %s %s", dirstr, default_editor, pathstr);
 
-				char *command = malloc(needed + 1);
-				if (!command) { perror("malloc"); exit(1); }
-
-				char editor_open_path[needed + 1];
-
-				// if a project root was enabled it will cd the new shell there
-				if (arg4[0] != '\0') {
-					printf("Project Root Dir: %s", arg4);
-				}
-
-				snprintf(editor_open_path, needed + 1, "%s %s", default_editor, path);
-
-				printf("je: jump: %s | editor: %s\n", jump_desc, default_editor);
-				fflush(stdout); // force write I/O buffer
-				
-
-				needed = snprintf(NULL, 0, "cd %s && %s %s", path, default_editor, path);
-				if (needed < 0) { perror("malloc"); exit(1); }
-
-				char new_shell_cmd[needed + 1];
-
-				snprintf(new_shell_cmd, needed + 1, "cd %s && %s %s", path, default_editor, path);
-
-				// need to figure out a way to detect if the path 
-				// given is a file or directory and also maybe add
-				// a way to add a root project directory if needed for
-				// saving purposes.
+				// open new shell
 				execlp("bash", "bash",
 						"-c",
-						editor_open_path, // editor_open_path does not cd into the path dir
-						(char*)NULL);
-				
+						run_cd_jump, // editor_open_path does not cd into the path dir
+						(char*)NULL
+				);
+
+				free(dirstr);
+				free(pathstr);
 				free(default_editor_key.dptr);
 				free(default_editor);
 			}
@@ -315,8 +318,6 @@ int main(int argc, char **argv) {
 			}
 
 
-			
-
 			size_t num_desc = 0;
 			int has_default_editor = 0;
 
@@ -342,7 +343,7 @@ int main(int argc, char **argv) {
 				/*
 				 * since the jump path and the shell dir are stored in
 				 * the database as one string ie "jump/path/somefile.c shell/dir"
-				 * and separated by a space. we need to separate each path
+				 * and separated by a space. We need to separate each path
 				 * at the space and store them in their own variables
 				 */
 				char *pattern = "^(\\S+)\\s+(\\S+)$"; // split the two paths at the space
@@ -401,60 +402,79 @@ int main(int argc, char **argv) {
 			}
 
 
-			datum add_desc_key = { 
-				.dptr = (void*)arg2, 
-				.dsize = strlen(arg2) 
-			};
-			datum add_desc_val;
+			char *dirstr = NULL;
 
-			char *temp_concat = NULL; // temp pointer for malloc'd concat
+			char *pathstr = strdup(arg3); // copies a valid null terminated string
+			if (!pathstr) { perror("malloc"); exit(1); }
 
-			// if there is a root project directory provided concat it to the
-			// value to be parsed later when pull out of database
+
+			/*
+			 * if 
+			 * there is a shell directory provided concat it to the jump path. 
+			 * else if
+			 * jump path is a file, store the shell directory as 
+			 * the directory that holds the jump path file.
+			 * else 
+			 * jump path is a directory, make the shell directory 
+			 * the same as jump path.
+			 * 
+			*/
 			if(*arg4 != '\0') {	
 
-				// allocate exact buffer length for both strings
-				int needed = snprintf(NULL, 0, "%s %s", arg3, arg4);
+				dirstr = strdup(arg4);
+				if (!dirstr) { perror("malloc"); exit(1); }
 
-				temp_concat = malloc(needed + 1);
-				if(!temp_concat) { perror("malloc"); exit(1); }
+			} else if (is_file(arg3)) {
 
-				snprintf(temp_concat, needed + 1, "%s %s", arg3, arg4);
-
-				add_desc_val.dptr = (void*)temp_concat;
-				add_desc_val.dsize = strlen(temp_concat);
+				// match directory that file is in 
+				char *pattern = ".*\\/";
+				dirstr = get_matches(pattern, arg3, 0, 0);
 
 			} else {
 
-				add_desc_val.dptr = (void*)arg3;
-				add_desc_val.dsize = strlen(arg3);
+				dirstr = strdup(arg3);
 
 			}
 
-			int store_return = gdbm_store(db, add_desc_key, add_desc_val, GDBM_INSERT);
 
-			if(temp_concat) free(temp_concat);
+			// allocate exact buffer length for both strings
+			int needed = snprintf(NULL, 0, "%s %s", pathstr, dirstr);
+			char *temp_concat = malloc(needed + 1);
+			if(!temp_concat) { perror("malloc"); exit(1); }
+			snprintf(temp_concat, needed + 1, "%s %s", pathstr, dirstr);
+
+
+			datum key = { 
+				.dptr = (void*)arg2, 
+				.dsize = strlen(arg2) 
+			};
+
+			datum val = {
+				.dptr = (void*)temp_concat,
+				.dsize = strlen(temp_concat),
+			};
+
+			int store_return = gdbm_store(db, key, val, GDBM_INSERT);
+
 
 			if (store_return == -1) {
 				fprintf(stderr, "%s: could not store value into database\n", 
 						gdbm_strerror(gdbm_errno));
 			} else if (store_return == 1) {
 				printf("je: Error, cound not add jump descriptor '%s' because it already exist. "
-						"Use 'je rm [descriptor]' first if you want to replace it\n",
+						"Use 'je rm <descriptor>' first if you want to replace it\n",
 						arg2);
-			} else if (*arg4 == '\0') {
-				printf("\nje: Success\n"
-						" New Descriptor:.'%s'\n"
-						" Jump Path:......'%s'\n"
-						" Project Root:...'none'\n",
-						arg2, arg3);
 			} else {
-				printf("\nje: Success\n"
-						" New Descriptor:.'%s'\n"
-						" Jump Path:......'%s'\n"
-						" Project Root:...'%s'\n",
-						arg2, arg3, arg4);
+				printf("je: Success\n"
+						" New Descriptor: '%s'\n"
+						"      Jump Path: '%s'\n"
+						"      Shell Dir: '%s'\n",
+						arg2, pathstr, dirstr);
 			}
+
+			free(pathstr);
+			if (dirstr) free(dirstr);
+			free(temp_concat);
 
 			break;
 		}
