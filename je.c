@@ -33,7 +33,7 @@ Cmd parse_cmd(const char *buf) {
   	if(!strcmp(buf, "list")) return CMD_LIST;
 	if(!strcmp(buf, "add")) return CMD_ADD;
 	if(!strcmp(buf, "rm"))  return CMD_REMOVE; 
-	if(!strcmp(buf, "de"))  return CMD_EDITOR; 
+	if(!strcmp(buf, "default-editor"))  return CMD_EDITOR; 
 	if(!strcmp(buf, "--help")) return CMD_HELP;
 	return CMD_OTHER;
 }
@@ -520,27 +520,47 @@ int main(int argc, char **argv) {
 
 		case CMD_HELP: { // you know
 						 
-			fprintf(stdout, "Welcome to je (J)ump (E)dit\n\n"
+			fprintf(stdout, "je (j)ump (e)dit help page\n\n"
 					"Usage:\n"
-					"   je <desc>             Jump to user (desc)riptor path and open editor\n"
-					"   je add <desc> <path>  (Add) a user jump (desc)riptor and specify (path)\n"
-					"   je rm  <desc>         (Re)moves a user jump (desc)riptor\n"
-					"   je de  <editor>       Specifies (d)efault (e)ditor when opening paths\n"
-					"   je list               Displays jump descriptor (list) and their paths\n"
-					"   je --help             Prints help\n\n"
+					"   je <desc> .................... jump to user (desc)riptor jump path and \n"
+					"                                  open editor.\n\n"
+					"   je add <desc> <path> <shdir> . (add)s user (desc)riptor and jump (path)\n" 
+					"                                  optional (sh)ell (dir)ectory, see below.\n\n"
+					"   je rm  <desc> ................ (r)e(m)oves a user jump (desc)riptor\n\n"
+					"   je default-editor <editor> ... specifies default editor\n" 
+					"                                  when opening paths.\n\n"
+					"   je list ...................... displays jump descriptor (list) with\n" 
+					"                                  their paths and shell directories.\n\n"
+					"   je --help .................... prints (help).\n\n"
 					"Description:\n"
-					"   je (Jump Edit) allows you to save a file path and a corresponding \n"
-					"   user made descriptor. A descriptor is a user made name to identify \n" 
-					"   a specific path. je needs you to specify a default-editor \n"
-					"   to open your path. After you have chosen a default-editor, you can \n"
-					"   jump to any saved paths and je will open that path in your default-editor \n\n"
+					"   - je (j)ump (e)dit allows user to save a jump (path) to an \n"
+					"     alias a.k.a (desc)riptor\n\n"
+					"   - A (desc)riptor has two components, a jump (path), and \n"
+					"     a (sh)ell (dir)ectory\n\n" 
+					"   - The jump (path) can point to a file or directory and\n"
+					"     tells (j)ump (e)dit where to open the file or\n" 
+					"     directory using the default editor\n\n"
+					"   - je works by opening a new shell on top of the shell je was\n"
+					"     called from. Because of this, the user has the option to \n"
+					"     specify a (sh)ell (dir)ectory that will be the new shell's\n"
+					"     current working directory.\n\n"
+					"   - If no (shdir) is specified, je will infer the directory\n"
+					"     in two ways\n"
+					"        1) if jump (path) is a directory, (shdir) will be\n" 
+					"           the same directory\n"
+					"        2) if jump (path) is a file, (shdir) will be the \n"
+					"           directory file is in\n\n"
+					"   - User must specify a default editor, which will be \n"
+					"     used by je to open all jump (path)s\n\n"
 					"Important Information:\n"
-					"   - je opens a new shell on top of your previous shell. \n"
-					"     As soon as you exit the editor you will return to the previous shell\n"
-					"   - je was build for max typing efficiency, thus the base command 'je <desc>' \n"
-					"     will be blocked by any sub command i.e.(list, add, rm, ...). This means you \n"
-					"     can not name any user descriptors a name that is already a je sub command \n"
-					"Happy Jumping!\n"
+					"   - As soon as user exits the editor, user will return\n"
+					"     to the previous shell\n\n"
+					"   - je was build for max typing efficiency, thus the base\n"
+					"     command 'je <desc>' will be blocked by any sub \n"
+					"     commands i.e.(list, add, rm, ...). This means user \n"
+					"     can not name any user descriptors a name that is \n"
+					"     already a je sub command \n\n"
+					"Happy Jump Editing!\n"
 			);
 
 			break;
