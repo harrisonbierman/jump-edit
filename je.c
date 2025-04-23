@@ -232,7 +232,7 @@ int main(int argc, char **argv) {
 				memcpy(valstr, fetched.dptr, fetched.dsize);
 				valstr[fetched.dsize] = '\0';
 
-				char *pattern = "^(\\S+)\\s+(\\S+)$";
+				char *pattern = "^(.+):::(.+)$";
 				char *pathstr = get_matches(pattern, valstr, 1, 2);
 				char *dirstr= get_matches(pattern, valstr, 2, 2);
 
@@ -346,7 +346,7 @@ int main(int argc, char **argv) {
 				 * and separated by a space. We need to separate each path
 				 * at the space and store them in their own variables
 				 */
-				char *pattern = "^(\\S+)\\s+(\\S+)$"; // split the two paths at the space
+				char *pattern = "^(.+):::(.+)$"; // split the two paths at the space
 				char *pathstr = get_matches(pattern, valstr, 1, 2);
 				char *dirstr = get_matches(pattern, valstr, 2, 2);
 
@@ -437,11 +437,15 @@ int main(int argc, char **argv) {
 			}
 
 
+			// three colons '%s:::%s' separate the two paths in storage
+			// this makes it less likely to have problems parsing 
+			// paths on other operating systems that use spaces
+			//
 			// allocate exact buffer length for both strings
-			int needed = snprintf(NULL, 0, "%s %s", pathstr, dirstr);
+			int needed = snprintf(NULL, 0, "%s:::%s", pathstr, dirstr);
 			char *temp_concat = malloc(needed + 1);
 			if(!temp_concat) { perror("malloc"); exit(1); }
-			snprintf(temp_concat, needed + 1, "%s %s", pathstr, dirstr);
+			snprintf(temp_concat, needed + 1, "%s:::%s", pathstr, dirstr);
 
 
 			datum key = { 
@@ -511,9 +515,6 @@ int main(int argc, char **argv) {
 				printf("je: Success, saving '%s' as default editor\n", arg2);
 			}
 
-
-
-
 			break;
 
 		}
@@ -560,7 +561,7 @@ int main(int argc, char **argv) {
 					"     commands i.e.(list, add, rm, ...). This means user \n"
 					"     can not name any user descriptors a name that is \n"
 					"     already a je sub command \n\n"
-					"Happy Jump Editing!\n"
+					"Happy Jump Editing\n"
 			);
 
 			break;
