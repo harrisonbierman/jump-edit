@@ -17,6 +17,12 @@
 
 #define BUF_SIZE 1024
 
+#if defined(__linux__)
+	#define APP_DATA_DIR "/.local/share/je"
+#elif defined(__APPLE__)
+	#define APP_DATA_DIR "/Library/Application Support/je"
+#endif
+
 typedef enum { 
 	CMD_OTHER,
 	CMD_LIST,
@@ -179,11 +185,16 @@ int main(int argc, char **argv) {
 	}
 
 
+	printf("%s\n", APP_DATA_DIR);
+	fflush(stdout);
 	// concat home to je directory	
 	// snprintf returns # if chars it attempted to write
 	char je_dir[BUF_SIZE];
-	int char_written= snprintf(je_dir, BUF_SIZE, "%s/.local/share/je", xdg_data_home);
+	int char_written= snprintf(je_dir, BUF_SIZE, "%s%s", xdg_data_home, APP_DATA_DIR);
 	assert(char_written < BUF_SIZE); // if attempted chars does not fit into buffer
+	
+	printf("%s\n", je_dir);
+	fflush(stdout);
 
 	// concat je directory to je.gdbm database file
 	char je_gdbm_dir[BUF_SIZE];
