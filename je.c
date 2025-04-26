@@ -184,17 +184,11 @@ int main(int argc, char **argv) {
 		}
 	}
 
-
-	printf("%s\n", APP_DATA_DIR);
-	fflush(stdout);
 	// concat home to je directory	
 	// snprintf returns # if chars it attempted to write
 	char je_dir[BUF_SIZE];
 	int char_written= snprintf(je_dir, BUF_SIZE, "%s%s", xdg_data_home, APP_DATA_DIR);
 	assert(char_written < BUF_SIZE); // if attempted chars does not fit into buffer
-	
-	printf("%s\n", je_dir);
-	fflush(stdout);
 
 	// concat je directory to je.gdbm database file
 	char je_gdbm_dir[BUF_SIZE];
