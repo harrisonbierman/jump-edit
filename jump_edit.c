@@ -217,13 +217,35 @@ int main(int argc, char **argv) {
 	// handle commands
 	switch(cmd) {
 		case CMD_OTHER: { // check db for user commands
-			
-			datum jump_desc_key = { (void*)jump_desc, strlen(jump_desc) };
+
+			datum jump_desc_key;
+
+			// Hacky solution to making the options before the arguments
+			// since I dont have a robust argument parser right now
+			// i need to fake options like this
+			if (!strcmp(jump_desc, "-j") || !strcmp(jump_desc, "-e")){
+
+				jump_desc_key.dptr = (void*)arg2; 
+				jump_desc_key.dsize = strlen(arg2);
+
+			} else {
+
+				jump_desc_key.dptr = (void*)jump_desc; 
+				jump_desc_key.dsize = strlen(jump_desc);
+
+			}
+
+
 			datum fetched = gdbm_fetch(db, jump_desc_key);
+
 
 			if (fetched.dptr == NULL) {
 				if (gdbm_errno == GDBM_ITEM_NOT_FOUND) {
-					fprintf(stderr, "je: \'%s\' is not a je command. ", jump_desc);
+					if (!strcmp(jump_desc, "-j") || !strcmp(jump_desc, "-e")){
+						fprintf(stderr, "je: \'%s\' is not a je command. ", arg2);
+					} else {
+						fprintf(stderr, "je: \'%s\' is not a je command. ", jump_desc);
+					}
 					fprintf(stderr, "See 'je --help' or 'je list' for a list of user jumps\n");
 					return 1;
 				} else {
@@ -278,40 +300,39 @@ int main(int argc, char **argv) {
 				memcpy(default_editor, fetched_editor.dptr, ed_len);
 				default_editor[ed_len] = '\0';
 
+				/* This is not needed anymore with new shell script method
+				 *
+					// calculate how many bytes we need for the next
+					// snprintf. It's a more precise way of doing it
+					// rather than just guessing a bigger buffer size.
+					needed = snprintf(NULL, 0, "cd %s && %s %s", quoted_dirstr, default_editor, quoted_pathstr);
+					if (needed < 0) { perror("malloc"); exit(1); }
+					char run_cd_jump[needed + 1];
+					snprintf(run_cd_jump, needed + 1, "cd %s && %s %s", quoted_dirstr, default_editor, quoted_pathstr);
 
-				// calculate how many bytes we need for the next
-				// snprintf. It's a more precise way of doing it
-				// rather than just guessing a bigger buffer size.
-				needed = snprintf(NULL, 0, "cd %s && %s %s", quoted_dirstr, default_editor, quoted_pathstr);
-				if (needed < 0) { perror("malloc"); exit(1); }
-				char run_cd_jump[needed + 1];
-				snprintf(run_cd_jump, needed + 1, "cd %s && %s %s", quoted_dirstr, default_editor, quoted_pathstr);
+					needed = snprintf(NULL, 0, "cd %s", quoted_dirstr);
+					if (needed < 0) { perror("malloc"); exit(1); }
+					char cd_only[needed + 1];
+					snprintf(cd_only, needed + 1, "cd %s", quoted_dirstr);
+					
 
-				needed = snprintf(NULL, 0, "cd %s", quoted_dirstr);
-				if (needed < 0) { perror("malloc"); exit(1); }
-				char cd_only[needed + 1];
-				snprintf(cd_only, needed + 1, "cd %s", quoted_dirstr);
-
-				// open new shell
-				// deprecated instead printing to stdout for bash shell to run
-				
-				/*
-				execlp("bash", "bash",
-						"-c",
-						run_cd_jump, // editor_open_path does not cd into the path dir
-						(char*)NULL
-				);
-
+					// open new shell
+					execlp("bash", "bash",
+							"-c",
+							run_cd_jump, // editor_open_path does not cd into the path dir
+							(char*)NULL
+					);
+				*
 				*/
 		
 
 				// this is read by the bash script and ran in the 
-				// current shell
-				if (!strcmp(arg2,"-j")) {
+				// Hacky solution to making the options before the argument
+				if (!strcmp(arg2,"-j") || !strcmp(jump_desc,"-j")) {
 
 					printf("cd %s", quoted_dirstr);
 
-				} else if (!strcmp(arg2, "-e")) {
+				} else if (!strcmp(arg2, "-e") || !strcmp(jump_desc, "-e")) {
 
 					printf("%s %s", default_editor, quoted_pathstr);
 
@@ -354,7 +375,7 @@ int main(int argc, char **argv) {
 			if (key.dptr == NULL) {
 				if(gdbm_errno == GDBM_ITEM_NOT_FOUND) {
 					fprintf(stderr, "je: Error\n"
-							" No default editor or jump descriptors in database.\n"
+							" No default editor or jump labels in database.\n"
 							" See 'je --help'\n");
 					return 1;
 				} else {
@@ -402,7 +423,7 @@ int main(int argc, char **argv) {
 				// jump descriptors
 				if(strcmp(keystr, "default-editor")) {
 					num_desc++;
-					printf("Descriptor: %s \n"
+					printf("Label: %s \n"
 							" Jump Path: %s\n"
 							" Shell Dir: %s\n\n"
 							, keystr, pathstr, dirstr);
@@ -426,7 +447,7 @@ int main(int argc, char **argv) {
 			// if there is a default editor but no added descriptors
 			if(num_desc == 0 && has_default_editor) {
 				printf("je: Error\n"
-						" No jump descriptors in database.\n"
+						" No jump labels in database.\n"
 						" See 'je --help'\n");
 			}
 
@@ -438,12 +459,12 @@ int main(int argc, char **argv) {
 			// if something was not written into it
 
 			if (*arg2 == '\0' ) {
-				fprintf(stderr, "could not add je command, no descriptor provided\n");
+				fprintf(stderr, "could not add je command, no label provided\n");
 				return 1;
 			}
 
 			if (*arg3 == '\0' ) {
-				fprintf(stderr, "could not add je command, no directory provided\n");
+				fprintf(stderr, "could not add je command, no label provided\n");
 				return 1;
 			}
 
@@ -511,14 +532,14 @@ int main(int argc, char **argv) {
 				fprintf(stderr, "%s: could not store value into database\n", 
 						gdbm_strerror(gdbm_errno));
 			} else if (store_return == 1) {
-				printf("je: Error, cound not add jump descriptor '%s' because it already exist. "
-						"Use 'je rm <descriptor>' first if you want to replace it\n",
+				printf("je: Error, cound not add jump label '%s' because it already exist. "
+						"Use 'je rm <label>' first if you want to replace it\n",
 						arg2);
 			} else {
 				printf("je: Success\n"
-						" New Descriptor: '%s'\n"
-						"      Jump Path: '%s'\n"
-						"      Shell Dir: '%s'\n",
+						" New Label: '%s'\n"
+						" Jump Path: '%s'\n"
+						" Shell Dir: '%s'\n",
 						arg2, pathstr, dirstr);
 			}
 
@@ -535,10 +556,10 @@ int main(int argc, char **argv) {
 
 			int delete_return = gdbm_delete(db, remove_desc_key);
 			if (delete_return == -1) {
-				fprintf(stderr, "je: Error, could not remove descriptor '%s', not found in database\n",
+				fprintf(stderr, "je: Error, could not remove label '%s', not found in database\n",
 						arg2);
 			} else {
-				printf("je: Success, jump descriptor '%s' removed\n", arg2);
+				printf("je: Success, jump label '%s' removed\n", arg2);
 			}
 
 			break;
@@ -569,43 +590,62 @@ int main(int argc, char **argv) {
 						 
 			fprintf(stdout, "je (j)ump (e)dit help page\n\n"
 					"Usage:\n"
-					"   je <desc> .................... jump to user (desc)riptor jump path and \n"
-					"                                  open editor.\n\n"
-					"   je add <desc> <path> <shdir> . (add)s user (desc)riptor and jump (path)\n" 
-					"                                  optional (sh)ell (dir)ectory, see below.\n\n"
-					"   je rm  <desc> ................ (r)e(m)oves a user jump (desc)riptor\n\n"
+					"   je [-j|-e] <label> ........... jump to labeled jump path and open editor\n"
+					"                                  see example (5).\n"
+					"      -j ........................ only jump to label directory.\n"
+					"      -e ........................ only edit at label path.\n\n"
+					"   je add <label> <path> <dir> .  adds user label and jump path with optional\n"
+					"                                  shell directory. See description (4).\n\n"
+					"   je rm  <label> ............... removes a user jump label.\n\n"
 					"   je default-editor <editor> ... specifies default editor\n" 
 					"                                  when opening paths.\n\n"
-					"   je list ...................... displays jump descriptor (list) with\n" 
+					"   je list ...................... displays jump labels with\n" 
 					"                                  their paths and shell directories.\n\n"
-					"   je --help .................... prints (help).\n\n"
+					"   je --help .................... prints help.\n\n"
 					"Description:\n"
-					"   - je (j)ump (e)dit allows user to save a jump (path) to an \n"
-					"     alias a.k.a (desc)riptor\n\n"
-					"   - A (desc)riptor has two components, a jump (path), and \n"
-					"     a (sh)ell (dir)ectory\n\n" 
-					"   - The jump (path) can point to a file or directory and\n"
-					"     tells (j)ump (e)dit where to open the file or\n" 
-					"     directory using the default editor\n\n"
-					"   - je works by opening a new shell on top of the shell je was\n"
-					"     called from. Because of this, the user has the option to \n"
-					"     specify a (sh)ell (dir)ectory that will be the new shell's\n"
-					"     current working directory.\n\n"
-					"   - If no (shdir) is specified, je will infer the directory\n"
-					"     in two ways\n"
-					"        1) if jump (path) is a directory, (shdir) will be\n" 
-					"           the same directory\n"
-					"        2) if jump (path) is a file, (shdir) will be the \n"
-					"           directory file is in\n\n"
-					"   - User must specify a default editor, which will be \n"
-					"     used by je to open all jump (path)s\n\n"
+					"   1) je (jump edit) allows user to save a jump path to an \n"
+					"     alias, a.k.a a label.\n\n"
+					"   2) A label has two components, a jump path, and a shell directory.\n\n"
+					"   3) The jump path can point to a file or a directory, which tells je\n"
+					"     where to open the file or directory using the default editor.\n\n" 
+					"   4) If no shell directory is specified, je will infer\n"
+					"     the directory in two ways\n"
+					"        -- if jump path is a file, dir will be the \n"
+					"           directory the file is in. See example (2)\n"
+					"        -- if jump path is a directory, the shell directory\n" 
+					"           will be the same as the jump path. See example (3)\n\n"
+					"   5) A User might want to set the shell directory to their project root\n"
+					"      directory so that 'things' work as expected while editing.\n"
+					"      See example (4).\n\n"
+					"   6) User must specify a default editor, which will be \n"
+					"     used by je to open all jump paths. See example (1).\n\n"
+					"Examples\n"
+					"   1) Add your editor of choice as default\n\n"
+					"      'je default-editor vim'\n"
+					"      'je default-editor nvim'\n"
+					"      'je default-editor code'\n\n"
+					"   2) Add ~/.bashrc file as path, je will infer the shell directory\n"
+					"      as the home '~/' directory that .bashrc is in\n\n"
+					"      'je add bash ~/.bashrc'\n\n"
+					"   3) Add ~/.local/ directory as path, je will infer the shell\n"
+					"      directory as the same directory\n\n"
+					"      'je add loc ~/.local'\n\n"
+					"   4) Add main.c as jump path and myproj-root as the shell directory\n\n"
+					"      'je add myproj ~/c-programs/myproj-root/src/main.c ~/c-programs/myproj-root/'\n\n"
+					"   5) Use myproj label with 3 options\n\n"
+					"      'je myproj' // cd to label shell directory and open editor from jump path\n"
+					"      'je -j myproj' // only cd to label shell directory does not open editor\n"
+					"      'je -e myproj' // only opens editor, does not change shell directory\n\n"
+					"   6) Display what jump labels user has added\n\n"
+					"      'je list'\n\n"
+					"   7) Remove label user does not want anymore\n\n"
+					"      'je rm .bashrc\n"
+					"      'je rm myproj\n\n"
 					"Important Information:\n"
-					"   - As soon as user exits the editor, user will return\n"
-					"     to the previous shell\n\n"
 					"   - je was build for max typing efficiency, thus the base\n"
-					"     command 'je <desc>' will be blocked by any sub \n"
+					"     command 'je <label>' will be blocked by any sub \n"
 					"     commands i.e.(list, add, rm, ...). This means user \n"
-					"     can not name any user descriptors a name that is \n"
+					"     can not name any labels a name that is \n"
 					"     already a je sub command \n\n"
 					"Happy Jump Editing\n"
 			);
