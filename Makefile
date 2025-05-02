@@ -1,3 +1,3 @@
 default:
-	gcc -o je je.c -lgdbm
+	gcc -o jump_edit jump_edit.c -lgdbm
 

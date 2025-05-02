@@ -258,6 +258,7 @@ int main(int argc, char **argv) {
 				// grab default editor from db
 				datum default_editor_key = { (void*)"default-editor\0", 15 };
 				datum fetched_editor = gdbm_fetch(db, default_editor_key);
+				// free(default_editor_key.dptr);
 
 				if (fetched_editor.dptr == NULL) {
 					if (gdbm_errno == GDBM_ITEM_NOT_FOUND) {
@@ -278,11 +279,6 @@ int main(int argc, char **argv) {
 				default_editor[ed_len] = '\0';
 
 
-				// important to close db here or else it will continue 
-				// to be open while editing a jump path. If db
-				// stays open, other instances cannot write to the db.
-				gdbm_close(db);
-
 				// calculate how many bytes we need for the next
 				// snprintf. It's a more precise way of doing it
 				// rather than just guessing a bigger buffer size.
@@ -291,24 +287,53 @@ int main(int argc, char **argv) {
 				char run_cd_jump[needed + 1];
 				snprintf(run_cd_jump, needed + 1, "cd %s && %s %s", quoted_dirstr, default_editor, quoted_pathstr);
 
+				needed = snprintf(NULL, 0, "cd %s", quoted_dirstr);
+				if (needed < 0) { perror("malloc"); exit(1); }
+				char cd_only[needed + 1];
+				snprintf(cd_only, needed + 1, "cd %s", quoted_dirstr);
+
 				// open new shell
+				// deprecated instead printing to stdout for bash shell to run
+				
+				/*
 				execlp("bash", "bash",
 						"-c",
 						run_cd_jump, // editor_open_path does not cd into the path dir
 						(char*)NULL
 				);
 
+				*/
+		
+
+				// this is read by the bash script and ran in the 
+				// current shell
+				if (!strcmp(arg2,"-j")) {
+
+					printf("cd %s", quoted_dirstr);
+
+				} else if (!strcmp(arg2, "-e")) {
+
+					printf("%s %s", default_editor, quoted_pathstr);
+
+				} else {
+
+					printf("cd %s && %s %s\n", quoted_dirstr, default_editor, quoted_pathstr);
+
+				}
+
+				
+				free(valstr);
 				free(dirstr);
 				free(pathstr);
 				free(quoted_dirstr);
-				free(quoted_dirstr);
-				free(default_editor_key.dptr);
+				free(quoted_pathstr);
+				free(fetched_editor.dptr);
 				free(default_editor);
+			
 			}
 
-			// I hate C
+			// I love C
 			free(fetched.dptr);
-
 
 			break;
 		}
@@ -592,6 +617,6 @@ int main(int argc, char **argv) {
 
 
 	gdbm_close(db);
-	return 0;
+	return (EXIT_SUCCESS);
 
 }
