@@ -368,6 +368,7 @@ int main(int argc, char **argv) {
 			char *default_editor = malloc(editor_fetched.dsize);
 			memcpy(default_editor, editor_fetched.dptr, editor_fetched.dsize);
 
+			printf("(L = Label), (JP = Jump Path), (SD = Shell Directory)\n");
 			printf("Default Editor: %s\n\n", default_editor);
 
 			datum key = gdbm_firstkey(db);
@@ -421,14 +422,23 @@ int main(int argc, char **argv) {
 				// because we are using the same database for storing the
 				// default-editor we need to not display it like other
 				// jump descriptors
-				if(strcmp(keystr, "default-editor")) {
-					num_desc++;
-					printf("Label: %s \n"
-							" Jump Path: %s\n"
-							" Shell Dir: %s\n\n"
-							, keystr, pathstr, dirstr);
-				} else {
+				if(!strcmp(keystr, "default-editor")) {
 					has_default_editor = 1;
+				} else {
+					num_desc++;
+					if(!strcmp(arg2,"-l")) {
+						printf("%s, ", keystr);
+					} else if (!strcmp(arg2,"-j")) {
+						printf("L: %s | JP: %s\n", keystr, pathstr);
+					} else if (!strcmp(arg2,"-d")) {
+						printf("L: %s | SD: %s\n", keystr, dirstr);
+					} else {
+					printf("L: %s \n"
+						   "├JP: %s\n"
+						   "└SD: %s\n\n"
+							, keystr, pathstr, dirstr);
+
+					}
 				}
 
 				free(keystr);
@@ -442,6 +452,11 @@ int main(int argc, char **argv) {
 
 				free(oldkey.dptr);
 
+			}
+
+			// extra new line so that things line up for this option
+			if(!strcmp(arg2,"-l")) {
+				printf("\n\n");
 			}
 			
 			// if there is a default editor but no added descriptors
@@ -592,15 +607,17 @@ int main(int argc, char **argv) {
 					"Usage:\n"
 					"   je [-j|-e] <label> ........... jump to labeled jump path and open editor\n"
 					"                                  see example (5).\n"
-					"      -j ........................ only jump to label directory.\n"
-					"      -e ........................ only edit at label path.\n\n"
+					"      -j ........................ [jump] only jump to label directory.\n"
+					"      -e ........................ [edit] only edit at label path.\n\n"
 					"   je add <label> <path> <dir> .  adds user label and jump path with optional\n"
 					"                                  shell directory. See description (4).\n\n"
 					"   je rm  <label> ............... removes a user jump label.\n\n"
 					"   je default-editor <editor> ... specifies default editor\n" 
 					"                                  when opening paths.\n\n"
-					"   je list ...................... displays jump labels with\n" 
-					"                                  their paths and shell directories.\n\n"
+					"   je list [-l|-j|-d]............ displays labels with jumps and directories\n" 
+					"      -l .........................[label] labels in oneline\n"
+					"      -j .........................[jump] only labels with jump\n"
+					"      -d .........................[directory] only labels with directories\n\n"
 					"   je --help .................... prints help.\n\n"
 					"Description:\n"
 					"   1) je (jump edit) allows user to save a jump path to an \n"
@@ -610,9 +627,9 @@ int main(int argc, char **argv) {
 					"     where to open the file or directory using the default editor.\n\n" 
 					"   4) If no shell directory is specified, je will infer\n"
 					"     the directory in two ways\n"
-					"        -- if jump path is a file, dir will be the \n"
-					"           directory the file is in. See example (2)\n"
-					"        -- if jump path is a directory, the shell directory\n" 
+					"        a) if jump path is a file, the shell directory will be the \n"
+					"           same directory the file is in. See example (2)\n"
+					"        b) if jump path is a directory, the shell directory\n" 
 					"           will be the same as the jump path. See example (3)\n\n"
 					"   5) A User might want to set the shell directory to their project root\n"
 					"      directory so that 'things' work as expected while editing.\n"
