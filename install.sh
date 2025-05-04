@@ -26,5 +26,6 @@ je() {
 EOF
 chmod +x /etc/profile.d/jump_edit.sh
 
-echo "jump_edit installed and /etc/profile.d/jump_edit.sh created."
+echo "jump_edit binary /usr/local/bin/jump_edit installed"
+echo "jump_edit bash function /etc/profile.d/jump_edit.sh created."
 echo "Start a new shell or run: source /etc/profile.d/jump_edit.sh"
