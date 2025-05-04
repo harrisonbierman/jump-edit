@@ -5,11 +5,12 @@ Jump Edit (je) allows users to change directories and open a default editor usin
 
 # 🔧 Installation
 
-Clone from github
+curl from github
 
 ```bash
-git clone https://github.com/harrisonbierman/jump-edit.git
-cd jump-edit
+mkdir jump-edit && cd jump-edit
+curl -L https://github.com/harrisonbierman/jump-edit/archive/refs/heads/main.tar.gz \
+  | tar xz --strip-components=1
 ```
 
 #
@@ -49,12 +50,12 @@ source /etc/profile.d/jump_edit.sh
 Remove repository
 
 ```bash
-rm -r ../jump-edit
+rm -rf ../jump-edit
 ```
 
 <br></br>
 
-# 💻 Example usage
+# 💻 jExample usage
 
 ## Pick a default editor
 
