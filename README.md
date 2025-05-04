@@ -118,3 +118,7 @@ je list # lists out added labels
 je rm  # removes label
 je --help # help page
 ```
+
+# License
+
+Apache 2.0 License
