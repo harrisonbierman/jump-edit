@@ -55,7 +55,7 @@ rm -rf ../jump-edit
 
 <br></br>
 
-# 💻 jExample usage
+# 💻 Example usage
 
 ## Pick a default editor
 
@@ -101,7 +101,7 @@ je add con ~/.config
 je con
 ```
 
-## Important je options
+## je options you should know
 
 ```bash
 # Only cd to shell directory without opening editor.
