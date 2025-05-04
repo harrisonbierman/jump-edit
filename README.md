@@ -1,8 +1,9 @@
 # Jump Edit CLI tool
 
 Jump Edit (je) allows users to change directories and open a default editor using custom labels.
+<br></br>
 
-## Installation
+# 🔧 Installation
 
 Clone from github
 
@@ -51,7 +52,9 @@ Remove repository
 rm -r ../jump-edit
 ```
 
-# Example usage
+<br></br>
+
+# 💻 Example usage
 
 ## Pick a default editor
 
@@ -63,7 +66,7 @@ je default-editor vim
 
 ### (je add) Option 1: explicitly providing a shell directory
 
-This is useful when the file you are tying to edit is not a direct child of the root of the project directory
+This is useful when the file to edit is not a direct child of the root directory of the project.
 
 ```bash
 # Add label, editor path, and shell directory.
@@ -73,17 +76,11 @@ je add mylabel ~/my-project-root/src/my_project.c ~/my-project-root
 
 # Open file with vim and cd shell to ~/my-project-root.
 je mylabel
-
-# Only cd to ~/my-project-root without opening editor.
-je -j mylabel
-
-# Only open file in editor without cd.
-je -e mylabel
 ```
 
 ### (je add) Option 2: not proividing shell directory
 
-This is useful if
+This is useful if...
 
 1. The edit path is a directory.
 2. File to edit is a direct child of the root project directory.
