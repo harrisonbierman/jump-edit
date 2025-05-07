@@ -301,32 +301,6 @@ int main(int argc, char **argv) {
 				memcpy(default_editor, fetched_editor.dptr, ed_len);
 				default_editor[ed_len] = '\0';
 
-				/* This is not needed anymore with new shell script method
-				 *
-					// calculate how many bytes we need for the next
-					// snprintf. It's a more precise way of doing it
-					// rather than just guessing a bigger buffer size.
-					needed = snprintf(NULL, 0, "cd %s && %s %s", quoted_dirstr, default_editor, quoted_pathstr);
-					if (needed < 0) { perror("malloc"); exit(1); }
-					char run_cd_jump[needed + 1];
-					snprintf(run_cd_jump, needed + 1, "cd %s && %s %s", quoted_dirstr, default_editor, quoted_pathstr);
-
-					needed = snprintf(NULL, 0, "cd %s", quoted_dirstr);
-					if (needed < 0) { perror("malloc"); exit(1); }
-					char cd_only[needed + 1];
-					snprintf(cd_only, needed + 1, "cd %s", quoted_dirstr);
-					
-
-					// open new shell
-					execlp("bash", "bash",
-							"-c",
-							run_cd_jump, // editor_open_path does not cd into the path dir
-							(char*)NULL
-					);
-				*
-				*/
-		
-
 				// this is read by the bash script and ran in the 
 				// Hacky solution to making the options before the argument
 				if (!strcmp(arg2,"-j") || !strcmp(jump_desc,"-j")) {
