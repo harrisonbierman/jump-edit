@@ -13,7 +13,8 @@
 #include <string.h>
 #include <regex.h>
 #include <gdbm.h>
-#include <unistd.h> // chdir()
+#include <unistd.h> 
+#include <arg_parser.h>
 
 #define BUF_SIZE 1024
 
