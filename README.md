@@ -33,7 +33,7 @@ make
 Compile option 2: manual compilation
 
 ```bash
-gcc -O3 -o jump_edit jump_edit.c -lgdbm
+gcc -O2 -Iinclude jump_edit.c -Llib -lgdbm -largparser  -o jump_edit 
 ```
 
 #
@@ -55,7 +55,7 @@ rm -rf ../jump-edit
 
 <br></br>
 
-# 💻 Example usage
+# 💻 Usage
 
 ## Pick a default editor
 
