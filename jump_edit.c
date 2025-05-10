@@ -14,9 +14,10 @@
 #include <regex.h>
 #include <gdbm.h>
 #include <unistd.h> 
-#include <arg_parser.h>
+#include "include/arg_parser.h"
 
 #define BUF_SIZE 1024
+#define SEE_HELP "See 'je -h' or 'je --help' for more information\n"
 
 #if defined(__linux__)
 	#define APP_DATA_DIR "/.local/share/je"
@@ -41,7 +42,7 @@ Cmd parse_cmd(const char *buf) {
 	if(!strcmp(buf, "add")) return CMD_ADD;
 	if(!strcmp(buf, "rm"))  return CMD_REMOVE; 
 	if(!strcmp(buf, "default-editor"))  return CMD_EDITOR; 
-	if(!strcmp(buf, "--help")) return CMD_HELP;
+	if(!strcmp(buf, "super-duper-help-page-yah")) return CMD_HELP;
 	return CMD_OTHER;
 }
 
@@ -81,7 +82,7 @@ char *get_matches(const char *pattern, const char *string, int group_index, int 
 	size_t len = end - start;
 
 	if (len <= 0) {
-		fprintf(stderr, "invalid match length. end: %d, start %d\n", end, start);
+		fprintf(stderr, "Error: Invalid match length. end: %d, start %d\n", end, start);
 		regfree(&regex);
 		return NULL;
 	}
@@ -114,11 +115,8 @@ int is_file(char *path) {
 	} else if (S_ISREG(st.st_mode)) {
 		return 1;
 	} else {
-		fprintf(stderr, "je: Error \n"
-						" Path '%s' is not a valid file or directory\n",
-						path
-		);
-		exit(1);
+		fprintf(stderr, "Error: Path '%s' is not a valid file or directory\n", path); 
+		exit(EXIT_FAILURE);
 	}
 }
 
@@ -126,62 +124,43 @@ int main(int argc, char **argv) {
 	
 	// arg1 will be a sub_command or a jump descriptor
 	Cmd cmd;
-	char jump_desc[BUF_SIZE];	jump_desc[0] = '\0';
 
-	// instead of initializing whole array to 0
-	// just set first char to null terminator saves CPU time 
-	char arg2[BUF_SIZE];		arg2[0] = '\0';
-	char arg3[BUF_SIZE];		arg3[0] = '\0';
-	char arg4[BUF_SIZE];        arg4[0] = '\0';
-
-	// Extract argument and make them safe
-	// i is 1 b/c first arg is 'je'
-	for(int i = 1; i < argc; i++) {
-
-		if (strnlen(argv[i], BUF_SIZE) >= BUF_SIZE) {
-			fprintf(stderr, "argument too long, truncated\n");
-			exit(EXIT_FAILURE);
-		}
-
-		// Do not initialize buf to buf[] = {0} 
-		// because it waste clock cycles
-		// instead manually add '\0' to end of string
-		char buf[BUF_SIZE];
-
-		// BUF_SIZE - 1 leaves room for null terminator
-		size_t arg_len = strnlen(argv[i], BUF_SIZE - 1);
-
-		// always null terminate after memory copy
-		memcpy(buf, argv[i], arg_len); 
-		buf[arg_len] = '\0';
-
-		// directory is used when adding a new user je jump
-		if (i == 1) {
-			// arg1 is either a command or a jump descriptor
-			cmd = parse_cmd(buf);
-			memcpy(jump_desc, buf, BUF_SIZE);
-		}
-
-		// stores user command as 
-		if (i == 2) memcpy(arg2, buf, BUF_SIZE);
-
-		// don't need to null terminate again b/c buf is safe
-		if (i == 3) memcpy(arg3, buf, BUF_SIZE);
-
-		// add functionality to add as many arguments as I want
-		if (i == 4) {
-			memcpy(arg4, buf, BUF_SIZE);
-		}
-
+	// create argument parse tree
+	struct ap_arg *head = NULL;
+	int rc = AP_parse(argc, argv, &head);
+	if (rc != 0) {
+		perror("parsing error");
+		exit(EXIT_FAILURE);
 	}
+	size_t num_args = AP_len(head);
 
+	struct ap_arg *sub_command = AP_get(head, 1);
+
+		if (sub_command != NULL) {
+			cmd = parse_cmd(sub_command->str);
+		}
+
+		// parse sub_command
+		if (sub_command == NULL) {
+			if (AP_has_flag(head, "-h", "--help")) {
+					cmd = parse_cmd("super-duper-help-page-yah");
+			} else if (AP_has_flag(head, NULL, NULL)){
+				fprintf(stderr, "Error: je option(s) not found\n" SEE_HELP);
+				exit(EXIT_FAILURE);
+			} else {
+				fprintf(stderr, "Error: no sub command or option(s) provided\n" SEE_HELP);
+				exit(EXIT_FAILURE);
+			}
+
+		}
 
 	// Create/check persistence file path
 	const char *xdg_data_home = getenv("XDG_DATA_HOME");
 	if (xdg_data_home == NULL){
 		xdg_data_home = getenv("HOME");
 		if (xdg_data_home == NULL) {
-			fprintf(stderr, "Neither XDG_DATA_HOME nor HOME is set\n");
+			fprintf(stderr, "Error: neither XDG_DATA_HOME nor HOME is set\n");
+			exit(EXIT_FAILURE);
 		}
 	}
 
@@ -204,9 +183,8 @@ int main(int argc, char **argv) {
 	} else if (status == -1) {
 		// printf("Directory '%s' already exists\n", je_dir);
 	} else {
-		fprintf(stderr, "Error: File %s:%d could not make database directory\n",
-				__FILE__, __LINE__);
-		return 1;
+		fprintf(stderr, "Error: File %s:%d could not make database directory\n", __FILE__, __LINE__);
+		exit(EXIT_FAILURE);
 	}
 	
 	
@@ -219,39 +197,27 @@ int main(int argc, char **argv) {
 	switch(cmd) {
 		case CMD_OTHER: { // check db for user commands
 
-			datum jump_desc_key;
+			struct ap_arg *label = AP_get(head, 1);
 
-			// Hacky solution to making the options before the arguments
-			// since I dont have a robust argument parser right now
-			// i need to fake options like this
-			if (!strcmp(jump_desc, "-j") || !strcmp(jump_desc, "-e")){
-
-				jump_desc_key.dptr = (void*)arg2; 
-				jump_desc_key.dsize = strlen(arg2);
-
-			} else {
-
-				jump_desc_key.dptr = (void*)jump_desc; 
-				jump_desc_key.dsize = strlen(jump_desc);
-
+			if (num_args > 2) {
+				fprintf(stderr, "Error: too many arguments\n" SEE_HELP);
+				exit(EXIT_FAILURE);
 			}
 
+			datum label_key;
+				label_key.dptr = (void*)label->str; 
+				label_key.dsize = strlen(label->str);
 
-			datum fetched = gdbm_fetch(db, jump_desc_key);
-
+			datum fetched = gdbm_fetch(db, label_key);
 
 			if (fetched.dptr == NULL) {
 				if (gdbm_errno == GDBM_ITEM_NOT_FOUND) {
-					if (!strcmp(jump_desc, "-j") || !strcmp(jump_desc, "-e")){
-						fprintf(stderr, "je: \'%s\' is not a je command. ", arg2);
-					} else {
-						fprintf(stderr, "je: \'%s\' is not a je command. ", jump_desc);
-					}
-					fprintf(stderr, "See 'je --help' or 'je list' for a list of user jumps\n");
-					return 1;
+					fprintf(stderr, "Error: \'%s\' is not a je label.\n", label->str);
+					fprintf(stderr, "See 'je list' for a list of user jumps\n" SEE_HELP);
+					exit(EXIT_FAILURE);
 				} else {
 					fprintf(stderr, "Error: %s\n", gdbm_db_strerror(db));
-					return 1;
+					exit(EXIT_FAILURE);
 				}
 			} else {
 
@@ -285,12 +251,12 @@ int main(int argc, char **argv) {
 
 				if (fetched_editor.dptr == NULL) {
 					if (gdbm_errno == GDBM_ITEM_NOT_FOUND) {
-						fprintf(stderr, "je: Could not run command because a default editor has not been set. ");
+						fprintf(stderr, "Error: Could not run command because a default editor has not been set. ");
 						fprintf(stderr, "use 'je default-editor [editor command]' to set\n");
-						return 1;
+						exit(EXIT_FAILURE);
 					} else {
 						fprintf(stderr, "Error: %s\n", gdbm_db_strerror(db));
-						return 1;
+						exit(EXIT_FAILURE);
 					}
 				}
 
@@ -301,15 +267,17 @@ int main(int argc, char **argv) {
 				memcpy(default_editor, fetched_editor.dptr, ed_len);
 				default_editor[ed_len] = '\0';
 
-				// this is read by the bash script and ran in the 
-				// Hacky solution to making the options before the argument
-				if (!strcmp(arg2,"-j") || !strcmp(jump_desc,"-j")) {
 
-					printf("cd %s", quoted_dirstr);
+				// stdout will be read by bash script and executed 
+				struct ap_arg *je = AP_get(head, 0);
 
-				} else if (!strcmp(arg2, "-e") || !strcmp(jump_desc, "-e")) {
+				if (AP_has_flag(je, "-j", "--jump")) {
 
-					printf("%s %s", default_editor, quoted_pathstr);
+					printf("cd %s\n", quoted_dirstr);
+
+				} else if (AP_has_flag(je, "-e", "--edit")) {
+
+					printf("%s %s\n", default_editor, quoted_pathstr);
 
 				} else {
 
@@ -336,6 +304,18 @@ int main(int argc, char **argv) {
 
 		case CMD_LIST: {   // print list and directories
 			
+			struct ap_arg *list = AP_get(head, 1);
+			if(list == NULL) {
+				fprintf(stderr, "Error: out of bounds, %s %d\n", __FILE__, __LINE__);
+				exit(EXIT_FAILURE);
+			}
+
+			size_t len = AP_len(head);
+			if (len > 2) {
+				fprintf(stderr, "Error: too many arguments\n" SEE_HELP);
+				exit(EXIT_FAILURE);
+			}
+			
 			// need to display current default editor at the top
 			// dont need to add null terminator because it was stored with one
 			datum default_editor_key = { (void*)"default-editor\0", 15 };
@@ -350,18 +330,16 @@ int main(int argc, char **argv) {
 
 			if (key.dptr == NULL) {
 				if(gdbm_errno == GDBM_ITEM_NOT_FOUND) {
-					fprintf(stderr, "je: Error\n"
-							" No default editor or jump labels in database.\n"
-							" See 'je --help'\n");
-					return 1;
+					fprintf(stderr, "Error: No default editor or jump labels in database.\n" SEE_HELP);
+					exit(EXIT_FAILURE);
 				} else {
 					fprintf(stderr, "Error: %s\n", gdbm_db_strerror(db));
-					return 1;
+					exit(EXIT_FAILURE);
 				}
 			}
 
 
-			size_t num_desc = 0;
+			size_t num_label = 0;
 			int has_default_editor = 0;
 
 			// maybe make this sort alphabetically later
@@ -400,19 +378,21 @@ int main(int argc, char **argv) {
 				if(!strcmp(keystr, "default-editor")) {
 					has_default_editor = 1;
 				} else {
-					num_desc++;
-					if(!strcmp(arg2,"-l")) {
+					num_label++;
+					if(AP_has_flag(list, "-l", "--label")) {
 						printf("%s, ", keystr);
-					} else if (!strcmp(arg2,"-j")) {
+					} else if (AP_has_flag(list, "-j", "--jump")) {
 						printf("L: %s | JP: %s\n", keystr, pathstr);
-					} else if (!strcmp(arg2,"-d")) {
+					} else if (AP_has_flag(list, "-d", "--directory")) {
 						printf("L: %s | SD: %s\n", keystr, dirstr);
-					} else {
+					} else if (AP_has_flag(list, NULL, NULL)) { // if any other flag is present 
+						fprintf(stderr, "Error: option(s) for list not found\n");
+						exit(EXIT_FAILURE);
+					} else if (!AP_has_flag(list, NULL, NULL)) { // if no flags are present
 					printf("L: %s \n"
 						   "├JP: %s\n"
 						   "└SD: %s\n\n"
 							, keystr, pathstr, dirstr);
-
 					}
 				}
 
@@ -430,12 +410,12 @@ int main(int argc, char **argv) {
 			}
 
 			// extra new line so that things line up for this option
-			if(!strcmp(arg2,"-l")) {
+			if(AP_has_flag(list, "-l", "--label")) {
 				printf("\n\n");
 			}
 			
-			// if there is a default editor but no added descriptors
-			if(num_desc == 0 && has_default_editor) {
+			// if there is a default editor but no added labels 
+			if(num_label == 0 && has_default_editor) {
 				printf("je: Error\n"
 						" No jump labels in database.\n"
 						" See 'je --help'\n");
@@ -445,51 +425,46 @@ int main(int argc, char **argv) {
 		}
 
 		case CMD_ADD: {   // adds user command
+			
+			struct ap_arg *add = AP_get(head, 1);
+			struct ap_arg *label = AP_get(head, 2);
+			struct ap_arg *path = AP_get(head, 3);
+			struct ap_arg *dir = AP_get(head, 4);
 
-			// if something was not written into it
-
-			if (*arg2 == '\0' ) {
-				fprintf(stderr, "could not add je command, no label provided\n");
-				return 1;
+			if (num_args > 5) {
+				fprintf(stderr, "Error: too many arguments\n" SEE_HELP);
+				exit(EXIT_FAILURE);
 			}
 
-			if (*arg3 == '\0' ) {
-				fprintf(stderr, "could not add je command, no label provided\n");
-				return 1;
+			// if something was not written after add command 
+			if (label == NULL) {
+				fprintf(stderr, "Error: could not add je command, no label provided\n" SEE_HELP);
+				exit(EXIT_FAILURE);
 			}
 
 
 			char *dirstr = NULL;
 
-			char *pathstr = strdup(arg3); // copies a valid null terminated string
+			char *pathstr = strdup(path->str); // copies a valid null terminated string
 			if (!pathstr) { perror("malloc"); exit(1); }
 
 
 			/*
-			 * if 
-			 * there is a shell directory provided concat it to the jump path. 
-			 * else if
-			 * jump path is a file, store the shell directory as 
-			 * the directory that holds the jump path file.
-			 * else 
-			 * jump path is a directory, make the shell directory 
-			 * the same as jump path.
-			 * 
 			*/
-			if(*arg4 != '\0') {	
+			if(dir != NULL) {	
 
-				dirstr = strdup(arg4);
+				dirstr = strdup(dir->str);
 				if (!dirstr) { perror("malloc"); exit(1); }
 
-			} else if (is_file(arg3)) {
+			} else if (is_file(path->str)) {
 
-				// match directory that file is in 
+				// extract directory that file is in
 				char *pattern = ".*\\/";
-				dirstr = get_matches(pattern, arg3, 0, 0);
+				dirstr = get_matches(pattern, path->str, 0, 0);
 
 			} else {
 
-				dirstr = strdup(arg3);
+				dirstr = strdup(path->str);
 
 			}
 
@@ -504,10 +479,9 @@ int main(int argc, char **argv) {
 			if(!temp_concat) { perror("malloc"); exit(1); }
 			snprintf(temp_concat, needed + 1, "%s:::%s", pathstr, dirstr);
 
-
 			datum key = { 
-				.dptr = (void*)arg2, 
-				.dsize = strlen(arg2) 
+				.dptr = (void*)label->str, 
+				.dsize = strlen(label->str) 
 			};
 
 			datum val = {
@@ -517,20 +491,19 @@ int main(int argc, char **argv) {
 
 			int store_return = gdbm_store(db, key, val, GDBM_INSERT);
 
-
 			if (store_return == -1) {
 				fprintf(stderr, "%s: could not store value into database\n", 
 						gdbm_strerror(gdbm_errno));
 			} else if (store_return == 1) {
-				printf("je: Error, cound not add jump label '%s' because it already exist. "
+				printf("Error: cound not add jump label '%s' because it already exist. "
 						"Use 'je rm <label>' first if you want to replace it\n",
-						arg2);
+						path->str);
 			} else {
-				printf("je: Success\n"
+				printf("Success\n"
 						" New Label: '%s'\n"
 						" Jump Path: '%s'\n"
 						" Shell Dir: '%s'\n",
-						arg2, pathstr, dirstr);
+						path->str, pathstr, dirstr);
 			}
 
 			free(pathstr);
@@ -541,15 +514,22 @@ int main(int argc, char **argv) {
 		}
 
 		case CMD_REMOVE: {// removes user command
+			struct ap_arg *remove = AP_get(head, 1);
+			struct ap_arg *label = AP_get(head, 2);
 
-			datum remove_desc_key = { (void*)arg2, strlen(arg2) };
+			if (num_args > 3) {
+				fprintf(stderr, "Error: too many arguments\n" SEE_HELP);
+				exit(EXIT_FAILURE);
+			}
 
-			int delete_return = gdbm_delete(db, remove_desc_key);
+			datum label_key = { (void*)label->str, strlen(label->str) };
+
+			int delete_return = gdbm_delete(db, label_key);
 			if (delete_return == -1) {
-				fprintf(stderr, "je: Error, could not remove label '%s', not found in database\n",
-						arg2);
+				fprintf(stderr, "Error: could not remove label '%s', not found in database\n",
+						label->str);
 			} else {
-				printf("je: Success, jump label '%s' removed\n", arg2);
+				printf("Success: jump label '%s' removed\n", label->str);
 			}
 
 			break;
@@ -557,19 +537,23 @@ int main(int argc, char **argv) {
 		}
 
 		case CMD_EDITOR: { // set/change default editor
-			// should I make another db to just hold the editor
-			// or should I just make another unique command 
-			// and store it into the db 
+
+			struct ap_arg *editor = AP_get(head, 2);
+
+			if (num_args > 3) {
+				fprintf(stderr, "Error: too many arguments\n" SEE_HELP);
+				exit(EXIT_FAILURE);
+			}
 
 			datum default_editor_key = { (void*)"default-editor\0", 15 };
-			datum default_editor_val = { (void*)arg2, strlen(arg2) };
+			datum default_editor_val = { (void*)editor->str, strlen(editor->str) };
 
 			int store_return = gdbm_store(db, default_editor_key, default_editor_val, GDBM_REPLACE);
 			if (store_return == -1) {
 				fprintf(stderr, "%s: could not store value into database\n", 
 						gdbm_strerror(gdbm_errno));
 			} else {
-				printf("je: Success, saving '%s' as default editor\n", arg2);
+				printf("Success: saving '%s' as default editor\n", editor->str);
 			}
 
 			break;
@@ -582,17 +566,17 @@ int main(int argc, char **argv) {
 					"Usage:\n"
 					"   je [-j|-e] <label> ........... jump to labeled jump path and open editor\n"
 					"                                  see example (5).\n"
-					"      -j ........................ [jump] only jump to label directory.\n"
-					"      -e ........................ [edit] only edit at label path.\n\n"
+					"      -j | --jump ............... [jump] only jump to label directory.\n"
+					"      -e | --edit ............... [edit] only edit at label path.\n\n"
 					"   je add <label> <path> <dir> .  adds user label and jump path with optional\n"
 					"                                  shell directory. See description (4).\n\n"
 					"   je rm  <label> ............... removes a user jump label.\n\n"
 					"   je default-editor <editor> ... specifies default editor\n" 
 					"                                  when opening paths.\n\n"
 					"   je list [-l|-j|-d]............ displays labels with jumps and directories\n" 
-					"      -l .........................[label] labels in oneline\n"
-					"      -j .........................[jump] only labels with jump\n"
-					"      -d .........................[directory] only labels with directories\n\n"
+					"      -l | --label ...............[label] labels in oneline\n"
+					"      -j | --jump ................[jump] only labels with jump\n"
+					"      -d | --directory ...........[directory] only labels with directories\n\n"
 					"   je --help .................... prints help.\n\n"
 					"Description:\n"
 					"   1) je (jump edit) allows user to save a jump path to an \n"
@@ -648,6 +632,7 @@ int main(int argc, char **argv) {
 	}
 
 
+	AP_free(head);
 	gdbm_close(db);
 	return (EXIT_SUCCESS);
 

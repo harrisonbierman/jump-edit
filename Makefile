@@ -1,3 +1,3 @@
 default:
-	gcc -O2 -o jump_edit jump_edit.c -lgdbm -largparser -L/usr/local/lib
+	gcc -O2 -Iinclude jump_edit.c -Llib -lgdbm -largparser  -o jump_edit 
 
