@@ -53,7 +53,7 @@ source /etc/profile.d/jump_edit.sh
 
 #
 
-Remove repository
+Remove directory
 
 ```bash
 rm -rf ../jump-edit
