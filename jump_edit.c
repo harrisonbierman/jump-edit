@@ -442,12 +442,13 @@ int main(int argc, char **argv) {
 				exit(EXIT_FAILURE);
 			}
 
+			if (path == NULL) {
+				fprintf(stderr, "Error: cound not add je command, no path provided\n" SEE_HELP);
+				exit(EXIT_FAILURE);
+			}
+
 
 			char *dirstr = NULL;
-
-			char *pathstr = strdup(path->str); // copies a valid null terminated string
-			if (!pathstr) { perror("malloc"); exit(1); }
-
 
 			/*
 			*/
@@ -474,10 +475,10 @@ int main(int argc, char **argv) {
 			// paths on other operating systems that use spaces
 			//
 			// allocate exact buffer length for both strings
-			int needed = snprintf(NULL, 0, "%s:::%s", pathstr, dirstr);
+			int needed = snprintf(NULL, 0, "%s:::%s", path->str, dirstr);
 			char *temp_concat = malloc(needed + 1);
 			if(!temp_concat) { perror("malloc"); exit(1); }
-			snprintf(temp_concat, needed + 1, "%s:::%s", pathstr, dirstr);
+			snprintf(temp_concat, needed + 1, "%s:::%s", path->str, dirstr);
 
 			datum key = { 
 				.dptr = (void*)label->str, 
@@ -503,10 +504,9 @@ int main(int argc, char **argv) {
 						" New Label: '%s'\n"
 						" Jump Path: '%s'\n"
 						" Shell Dir: '%s'\n",
-						label->str, pathstr, dirstr);
+						label->str, path->str, dirstr);
 			}
 
-			free(pathstr);
 			if (dirstr) free(dirstr);
 			free(temp_concat);
 
