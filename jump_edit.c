@@ -497,13 +497,13 @@ int main(int argc, char **argv) {
 			} else if (store_return == 1) {
 				printf("Error: cound not add jump label '%s' because it already exist. "
 						"Use 'je rm <label>' first if you want to replace it\n",
-						path->str);
+						label->str);
 			} else {
 				printf("Success\n"
 						" New Label: '%s'\n"
 						" Jump Path: '%s'\n"
 						" Shell Dir: '%s'\n",
-						path->str, pathstr, dirstr);
+						label->str, pathstr, dirstr);
 			}
 
 			free(pathstr);
